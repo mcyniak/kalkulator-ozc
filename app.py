@@ -1,53 +1,116 @@
-"""Aplikacja OZC: wrzuć audyt → sprawdź odczyt → policz → zapisz. Uruchom: uruchom.bat"""
+"""Aplikacja OZC: wrzuć audyty → sprawdź odczyt → policz → zapisz. Uruchom: uruchom.bat"""
 from __future__ import annotations
 
 import io
-import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from ozc.ai_odczyt import BladOdczytu, odczytaj_audyt
+from ozc import __version__, klucz_api
+from ozc.ai_odczyt import MODEL, BladOdczytu, odczytaj_audyt
 from ozc.dane import BladDanych, Dane, normalizuj, opcje_listy, uzupelnij_domyslne, wczytaj_xlsx
-from ozc import __version__
 from ozc.konfiguracja import KATALOG_DANYCH
 from ozc.obliczenia import oblicz
 from ozc.pola import POLA, Pole, Sekcja
-from ozc.raport import lista_adresow, raport_md, zapisz_adres
+from ozc.raport import lista_adresow, zapisz_adres
 
 KATALOG_ADRESOW = KATALOG_DANYCH / "adresy"
 ZRODLO_CZLOWIEK = "uzupełnione przez człowieka"
 NIEPEWNE = {"protokół – odczyt niepewny", "AI – do sprawdzenia", "założenie domyślne"}
+OBRAZY = (".jpg", ".jpeg", ".png", ".webp")
+ROWNOLEGLE_ODCZYTY = 4
 
 st.set_page_config(page_title="Kalkulator OZC", page_icon="🔥", layout="wide")
 ss = st.session_state
+klucz_api.zastosuj_zapisany()
 
 
 # ---------------------------------------------------------------------------
-# Wczytanie audytu
+# Wczytanie audytów
 # ---------------------------------------------------------------------------
 
-def wczytaj(pliki) -> None:
-    excele = [p for p in pliki if p.name.lower().endswith(".xlsx")]
-    try:
-        if excele:
-            dane, problemy = normalizuj(wczytaj_xlsx(io.BytesIO(excele[0].getvalue())))
-            ss.odczyt = {"dane": uzupelnij_domyslne(dane), "pytania": problemy,
-                         "podsumowanie": f"Wczytano z pliku {excele[0].name}.", "pliki": []}
+def grupuj_pliki(pliki) -> list[tuple[str, list[tuple[str, bytes]]]]:
+    """Każdy PDF i każdy Excel to osobny audyt; wszystkie zdjęcia razem to jeden audyt (strony protokołu)."""
+    audyty, zdjecia = [], []
+    for p in pliki:
+        if p.name.lower().endswith(OBRAZY):
+            zdjecia.append((p.name, p.getvalue()))
         else:
-            surowe = [(p.name, p.getvalue()) for p in pliki]
-            with st.spinner("Claude czyta protokół… zwykle 1–3 minuty."):
-                wynik = odczytaj_audyt(surowe)
-            ss.odczyt = {"dane": wynik.dane, "pytania": wynik.pytania,
-                         "podsumowanie": wynik.podsumowanie, "pliki": surowe}
-    except BladOdczytu as e:
-        st.error(str(e))
-        return
-    ss.wersja = ss.get("wersja", 0) + 1
-    ss.pop("wynik", None)
-    ss.pop("zapisano", None)
+            audyty.append((p.name, [(p.name, p.getvalue())]))
+    if zdjecia:
+        audyty.append((f"{zdjecia[0][0]} (+{len(zdjecia) - 1} zdjęć)" if len(zdjecia) > 1 else zdjecia[0][0], zdjecia))
+    return audyty
 
+
+def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]]) -> dict:
+    """Odczyt jednego audytu — wywoływany w wątku, bez funkcji Streamlit."""
+    audyt = {"nazwa": nazwa, "pliki": pliki, "dane": None, "pytania": [], "podsumowanie": "",
+             "wynik": None, "blad": None, "zapisano": False}
+    try:
+        if nazwa.lower().endswith(".xlsx"):
+            dane, problemy = normalizuj(wczytaj_xlsx(io.BytesIO(pliki[0][1])))
+            audyt.update(dane=uzupelnij_domyslne(dane), pytania=problemy, pliki=[])
+        else:
+            w = odczytaj_audyt(pliki)
+            audyt.update(dane=w.dane, pytania=w.pytania, podsumowanie=w.podsumowanie)
+    except BladOdczytu as e:
+        audyt["blad"] = f"Błąd odczytu: {e}"
+    except Exception as e:  # noqa: BLE001 — jeden zły plik nie może zatrzymać całej partii
+        audyt["blad"] = f"Nie udało się odczytać pliku: {e}"
+    return audyt
+
+
+def wczytaj_partie(pliki) -> None:
+    grupy = grupuj_pliki(pliki)
+    if any(not n.lower().endswith(".xlsx") for n, _ in grupy) and not klucz_api.aktywny_klucz():
+        st.error("Brak klucza API — wpisz go w zakładce „Ustawienia”. Bez klucza można wczytać tylko pliki Excel.")
+        return
+    postep = st.progress(0.0, text=f"Claude czyta audyty: 0 z {len(grupy)} (każdy ok. 1–3 min)…")
+    wyniki: list[dict | None] = [None] * len(grupy)
+    with ThreadPoolExecutor(max_workers=ROWNOLEGLE_ODCZYTY) as pula:
+        zadania = {pula.submit(odczytaj, n, p): i for i, (n, p) in enumerate(grupy)}
+        for gotowe, z in enumerate(as_completed(zadania), start=1):
+            wyniki[zadania[z]] = z.result()
+            postep.progress(gotowe / len(grupy), text=f"Claude czyta audyty: {gotowe} z {len(grupy)}…")
+    postep.empty()
+    for a in wyniki:
+        if a["dane"] is not None:
+            policz(a)
+    ss.audyty = wyniki
+    ss.wersja = ss.get("wersja", 0) + 1
+
+
+def policz(audyt: dict) -> None:
+    dane, problemy = normalizuj(audyt["dane"])
+    audyt["dane"], audyt["wynik"], audyt["blad"] = dane, None, None
+    if problemy:
+        audyt["blad"] = "Popraw dane: " + "; ".join(problemy)
+        return
+    try:
+        audyt["wynik"] = oblicz(dane)
+    except BladDanych as e:
+        audyt["blad"] = "Brak danych: " + "; ".join(p.removeprefix("Brak danych: ") for p in e.problemy)
+
+
+def status(a: dict) -> str:
+    if a["zapisano"]:
+        return "✅ zapisano"
+    if a["blad"]:
+        return "❌ " + ("błąd odczytu" if a["dane"] is None else "brak danych")
+    n = len(a["wynik"].ostrzezenia)
+    return f"⚠ {n} do sprawdzenia" if n else "✔ gotowe"
+
+
+def zapisz(a: dict) -> None:
+    zapisz_adres(KATALOG_ADRESOW, a["dane"], a["wynik"], a["pliki"], a["pytania"])
+    a["zapisano"] = True
+
+
+# ---------------------------------------------------------------------------
+# Formularz sprawdzania
+# ---------------------------------------------------------------------------
 
 def tekst(v) -> str:
     if v is None:
@@ -57,7 +120,7 @@ def tekst(v) -> str:
     return str(v)
 
 
-def formularz(dane: Dane) -> Dane:
+def formularz(dane: Dane, prefiks: str) -> Dane:
     """Pola do sprawdzenia, sekcjami. Zmieniona wartość dostaje źródło „uzupełnione przez człowieka”."""
     wynik = Dane(dict(dane.wartosci), dict(dane.zrodla), dict(dane.uwagi))
     sekcje: list[tuple[str, list[Pole]]] = []
@@ -67,7 +130,6 @@ def formularz(dane: Dane) -> Dane:
         elif p.rodzaj != "calc":
             sekcje[-1][1].append(p)
 
-    w = ss.get("wersja", 0)
     for tytul, pola in sekcje:
         niepewnych = sum(1 for p in pola if dane.zrodla.get(p.klucz) in NIEPEWNE and dane.get(p.klucz) is not None)
         naglowek = tytul + (f"  —  ⚠ {niepewnych} do sprawdzenia" if niepewnych else "")
@@ -84,9 +146,9 @@ def formularz(dane: Dane) -> Dane:
                     opcje = [""] + opcje_listy(p)
                     obecna = dane.get(k)
                     nowa = c2.selectbox(p.etykieta, opcje, index=opcje.index(obecna) if obecna in opcje else 0,
-                                        key=f"{w}_{k}", label_visibility="collapsed")
+                                        key=f"{prefiks}_{k}", label_visibility="collapsed")
                 else:
-                    nowa = c2.text_input(p.etykieta, value=tekst(dane.get(k)), key=f"{w}_{k}",
+                    nowa = c2.text_input(p.etykieta, value=tekst(dane.get(k)), key=f"{prefiks}_{k}",
                                          label_visibility="collapsed", help=p.podpowiedz or None)
                 if dane.uwagi.get(k):
                     c3.caption(dane.uwagi[k])
@@ -97,19 +159,33 @@ def formularz(dane: Dane) -> Dane:
     return wynik
 
 
-# ---------------------------------------------------------------------------
-# Wynik
-# ---------------------------------------------------------------------------
+def sprawdzanie(a: dict, i: int) -> None:
+    if a["dane"] is None:
+        st.error(a["blad"])
+        return
+    if a["wynik"]:
+        st.metric(f"OZC — {a['dane'].get('adres') or a['nazwa']}", f"{a['wynik'].phi_HL_kW:.2f} kW")
+        if a["wynik"].ostrzezenia:
+            st.warning("**Do sprawdzenia:**\n\n" + "\n".join(f"- {o}" for o in a["wynik"].ostrzezenia))
+    elif a["blad"]:
+        st.error(a["blad"])
+    if a["podsumowanie"]:
+        st.info(a["podsumowanie"])
+    if a["pytania"]:
+        st.warning("**Pytania do audytora / braki:**\n\n" + "\n".join(f"- {p}" for p in a["pytania"]))
 
-def pokaz_wynik(dane: Dane, w, pytania: list[str]) -> None:
-    st.divider()
-    st.metric(f"OZC — {dane.get('adres') or 'adres'}", f"{w.phi_HL_kW:.2f} kW")
-    if w.ostrzezenia:
-        st.warning("**Do sprawdzenia przed zapisem:**\n\n" + "\n".join(f"- {o}" for o in w.ostrzezenia))
-    if st.button("💾 Zapisz do listy adresów", type="primary"):
-        zapisz_adres(KATALOG_ADRESOW, dane, w, ss.odczyt.get("pliki", []), pytania)
-        ss.zapisano = True
-    if ss.get("zapisano"):
+    st.markdown("Pola z ⚠ są niepewne albo przyjęte domyślnie — zweryfikuj je i kliknij „Przelicz”.")
+    poprawione = formularz(a["dane"], f"{ss.get('wersja', 0)}_{i}")
+    c1, c2 = st.columns(2)
+    if c1.button("🔄 Przelicz", key=f"przelicz_{i}"):
+        a["dane"] = poprawione
+        a["zapisano"] = False
+        policz(a)
+        st.rerun()
+    if a["wynik"] and not a["zapisano"] and c2.button("💾 Zapisz ten adres", type="primary", key=f"zapisz_{i}"):
+        zapisz(a)
+        st.rerun()
+    if a["zapisano"]:
         st.success("Zapisano — wynik jest w zakładce „Lista adresów”.")
 
 
@@ -117,45 +193,44 @@ def pokaz_wynik(dane: Dane, w, pytania: list[str]) -> None:
 # Strony
 # ---------------------------------------------------------------------------
 
-def strona_nowy_audyt() -> None:
-    st.title("Nowy audyt")
-    st.markdown("**1.** Wrzuć skan protokołu (PDF lub zdjęcia stron) albo wypełniony szablon Excel.")
-    pliki = st.file_uploader("Pliki audytu", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
-                             accept_multiple_files=True, label_visibility="collapsed")
-    if pliki and st.button("📄 Odczytaj audyt", type="primary"):
-        jest_excel = any(p.name.lower().endswith(".xlsx") for p in pliki)
-        if not jest_excel and not os.environ.get("ANTHROPIC_API_KEY"):
-            st.error("Brak klucza API (zmienna ANTHROPIC_API_KEY) — patrz zakładka „Pomoc”. "
-                     "Bez klucza można wczytać tylko wypełniony szablon Excel.")
-        else:
-            wczytaj(pliki)
+def strona_audyty() -> None:
+    st.title("Audyty")
+    st.markdown("**1.** Wrzuć audyty — **każdy PDF to osobny adres** (można wiele naraz). "
+                "Zdjęcia stron jednego protokołu wrzuć razem w osobnej partii. Działa też wypełniony szablon Excel.")
+    pliki = st.file_uploader("Pliki audytów", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
+                             accept_multiple_files=True, label_visibility="collapsed",
+                             key=f"wgrane_{ss.get('wersja', 0)}")
+    if pliki and st.button(f"📄 Odczytaj ({len(grupuj_pliki(pliki))})", type="primary"):
+        wczytaj_partie(pliki)
 
-    if "odczyt" not in ss:
+    audyty = ss.get("audyty")
+    if not audyty:
         return
-    odczyt = ss.odczyt
-    st.markdown("**2.** Sprawdź odczyt. Pola z ⚠ są niepewne albo przyjęte domyślnie — zweryfikuj je.")
-    if odczyt["podsumowanie"]:
-        st.info(odczyt["podsumowanie"])
-    if odczyt["pytania"]:
-        st.warning("**Pytania do audytora / braki:**\n\n" + "\n".join(f"- {p}" for p in odczyt["pytania"]))
 
-    dane_formularz = formularz(odczyt["dane"])
+    st.markdown("**2.** Wyniki odczytu. Otwórz audyt poniżej, żeby sprawdzić dane i zapisać.")
+    tabela = pd.DataFrame([{
+        "Plik": a["nazwa"],
+        "Adres": a["dane"].get("adres") if a["dane"] else "—",
+        "OZC [kW]": round(a["wynik"].phi_HL_kW, 2) if a["wynik"] else None,
+        "Status": status(a),
+    } for a in audyty])
+    st.dataframe(tabela, hide_index=True, width="content")
 
-    st.markdown("**3.** Policz OZC.")
-    if st.button("🔥 Oblicz OZC", type="primary"):
-        dane, problemy = normalizuj(dane_formularz)
-        if problemy:
-            st.error("Popraw dane:\n\n" + "\n".join(f"- {p}" for p in problemy))
-            ss.pop("wynik", None)
-        else:
-            try:
-                ss.wynik = (dane, oblicz(dane))
-                ss.pop("zapisano", None)
-            except BladDanych as e:
-                st.error("Nie można policzyć — uzupełnij:\n\n" + "\n".join(f"- {p}" for p in e.problemy))
-                ss.pop("wynik", None)
-    if "wynik" in ss:
-        pokaz_wynik(*ss.wynik, odczyt["pytania"])
+    gotowe = [a for a in audyty if a["wynik"] and not a["wynik"].ostrzezenia and not a["zapisano"]]
+    c1, c2 = st.columns(2)
+    if gotowe and c1.button(f"💾 Zapisz wszystkie bez ostrzeżeń ({len(gotowe)})"):
+        for a in gotowe:
+            zapisz(a)
+        st.rerun()
+    if c2.button("🗑 Wyczyść i zacznij nową partię"):
+        ss.pop("audyty", None)
+        ss.wersja = ss.get("wersja", 0) + 1
+        st.rerun()
+
+    st.markdown("**3.** Sprawdź audyt.")
+    etykiety = [f"{i + 1}. {a['nazwa']} — {status(a)}" for i, a in enumerate(audyty)]
+    i = st.selectbox("Audyt", range(len(audyty)), format_func=lambda j: etykiety[j], label_visibility="collapsed")
+    sprawdzanie(audyty[i], i)
 
 
 def strona_lista() -> None:
@@ -172,30 +247,43 @@ def strona_lista() -> None:
     st.download_button("Pobierz tabelę (.xlsx)", bufor.getvalue(), file_name="OZC_adresy.xlsx")
 
 
-def strona_pomoc() -> None:
-    st.title("Pomoc")
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        st.success("Klucz API jest ustawiony — odczyt PDF przez AI działa.")
+def strona_ustawienia() -> None:
+    st.title("Ustawienia")
+    st.subheader("Klucz API Anthropic")
+    aktywny = klucz_api.aktywny_klucz()
+    if aktywny:
+        st.success(f"Klucz jest ustawiony: `{klucz_api.zamaskowany(aktywny)}` — odczyt PDF przez AI działa.")
     else:
-        st.error("Brak klucza API. Odczyt PDF przez AI nie zadziała (Excel tak).")
+        st.warning("Brak klucza — odczyt PDF nie zadziała (pliki Excel tak).")
+
+    with st.form("klucz", clear_on_submit=True):
+        nowy = st.text_input("Nowy klucz", type="password", placeholder="sk-ant-...")
+        if st.form_submit_button("Sprawdź i zapisz", type="primary") and nowy.strip():
+            with st.spinner("Sprawdzam klucz…"):
+                blad = klucz_api.sprawdz(nowy, MODEL)
+            if blad:
+                st.error(blad)
+            else:
+                klucz_api.zapisz(nowy)
+                st.rerun()
+    if klucz_api.zapisany_klucz() and st.button("Usuń zapisany klucz"):
+        klucz_api.usun()
+        st.rerun()
+    st.caption(f"Klucz zapisuje się tylko na tym komputerze, w pliku {klucz_api.PLIK_KLUCZA}. "
+               "Klucz wygenerujesz w konsoli Anthropic (platform.claude.com → API Keys).")
+
+    st.subheader("Jak to działa")
     st.markdown("""
-**Jak ustawić klucz API (jednorazowo):**
-1. Wygeneruj klucz na https://platform.claude.com (Settings → API Keys).
-2. Otwórz „Wiersz polecenia” (cmd) i wpisz: `setx ANTHROPIC_API_KEY "sk-ant-..."`
-3. Zamknij to okno i uruchom aplikację ponownie (`uruchom.bat`).
-
-**Jak to działa:**
-- AI odczytuje protokół i oznacza przy każdej wartości źródło: protokół / odczyt niepewny / do sprawdzenia.
-  Czego nie ma w protokole, nie zgaduje — program wstawia założenie domyślne (oznaczone).
+- AI odczytuje protokół i przy każdej wartości oznacza źródło: protokół / odczyt niepewny / do sprawdzenia.
+  Czego nie ma w protokole, nie zgaduje — program wstawia założenie domyślne (oznaczone ⚠).
 - Obliczenia: PN-EN 12831:2006 dla całego budynku; grunt wg PN-EN ISO 13370.
-  Wszystkie wartości normowe i biblioteka przegród są w pliku `konfiguracja.toml`.
-- Każdy zapisany adres to folder w `adresy/` z plikami: `dane.xlsx`, `raport.md`, `wynik.json` i oryginałem audytu.
-
-**Koszt odczytu:** ok. 0,1–0,3 USD za protokół (model Claude Opus 5.5).
+- Koszt odczytu: ok. 0,1–0,3 USD za protokół.
 """)
+    st.caption(f"Wersja {__version__} · wyniki zapisują się w {KATALOG_ADRESOW}")
 
 
-strony = {"Nowy audyt": strona_nowy_audyt, "Lista adresów": strona_lista, "Pomoc": strona_pomoc}
+strony = {"Audyty": strona_audyty, "Lista adresów": strona_lista, "Ustawienia": strona_ustawienia}
 wybrana = st.sidebar.radio("Menu", list(strony))
-st.sidebar.caption(f"Wersja {__version__}\n\nWyniki: {KATALOG_ADRESOW}")
+if not klucz_api.aktywny_klucz():
+    st.sidebar.warning("Brak klucza API — wpisz go w „Ustawieniach”.")
 strony[wybrana]()

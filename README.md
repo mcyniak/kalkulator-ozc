@@ -10,14 +10,15 @@ Wyniki zapisują się w `Dokumenty\Kalkulator OZC` — nowa wersja programu ich 
 Dla programisty: dwuklik `uruchom.bat` (Python 3.11+, środowisko tworzy się samo).
 Nowe wydanie .exe: `git tag v0.2.0 && git push origin v0.2.0` — GitHub zbuduje ZIP automatycznie.
 
-Odczyt PDF przez AI wymaga klucza API Anthropic w zmiennej środowiskowej (jednorazowo, w cmd):
-`setx ANTHROPIC_API_KEY "sk-ant-..."`, potem ponowne uruchomienie aplikacji.
+Odczyt PDF przez AI wymaga klucza API Anthropic — wpisz go raz w zakładce **Ustawienia**
+(zapisuje się lokalnie w `%LOCALAPPDATA%\Kalkulator OZC`, nigdy w kodzie ani repozytorium).
 
-## Praca z audytem
-1. **Nowy audyt** → przeciągnij PDF/zdjęcia protokołu (lub wypełniony `szablony/szablon_OZC.xlsx`) → „Odczytaj audyt”.
-2. Sprawdź pola z ⚠ i pytania do audytora; popraw wartości.
-3. „Oblicz OZC” → „Zapisz adres”. Wynik trafia do `adresy/<nr>_<adres>/` (dane.xlsx, raport.md, wynik.json, oryginał).
-4. **Lista adresów** — zestawienie wszystkich wyników, eksport do Excela.
+## Praca z audytami
+1. **Audyty** → przeciągnij PDF-y (każdy PDF = osobny adres, można wiele naraz) → „Odczytaj”.
+   Zdjęcia stron jednego protokołu wrzuca się razem w osobnej partii. Działa też wypełniony `szablony/szablon_OZC.xlsx`.
+2. Tabela pokazuje OZC i status każdego audytu. Otwórz audyt, sprawdź pola z ⚠, w razie zmian „Przelicz”.
+3. „Zapisz ten adres” albo „Zapisz wszystkie bez ostrzeżeń”.
+4. **Lista adresów** — tabela Adres | OZC [kW], eksport do Excela.
 
 ## Pliki
 - `konfiguracja.toml` — wszystkie wartości normowe, biblioteka przegród, założenia domyślne (ze źródłami).
