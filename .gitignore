@@ -1,0 +1,19 @@
+# Środowisko i artefakty budowania
+.venv/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+.playwright-mcp/
+
+# Dane klientów — NIGDY do repozytorium
+adresy/
+*.pdf
+*.jpg
+*.jpeg
+*.png
+przyklady/*.xlsx
+
+# Sekrety
+.env
+*.key

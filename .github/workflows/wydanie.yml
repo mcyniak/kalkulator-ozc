@@ -1,0 +1,42 @@
+# Buduje "Kalkulator OZC.exe" i publikuje go jako ZIP w zakładce Releases.
+# Nowe wydanie: git tag v0.1.0 && git push origin v0.1.0
+name: Wydanie
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalacja pakietów
+        run: python -m pip install -r wymagania-dev.txt
+
+      - name: Testy
+        run: python -m pytest -q
+
+      - name: Szablon Excel
+        run: python generuj_szablon.py
+
+      - name: Budowa .exe
+        run: python -m PyInstaller --noconfirm kalkulator_ozc.spec
+
+      - name: Spakowanie
+        shell: pwsh
+        run: Compress-Archive -Path "dist/Kalkulator OZC" -DestinationPath "Kalkulator-OZC-${{ github.ref_name }}.zip"
+
+      - name: Publikacja wydania
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" "Kalkulator-OZC-${{ github.ref_name }}.zip" --title "Kalkulator OZC ${{ github.ref_name }}" --notes "Pobierz ZIP, rozpakuj i uruchom 'Kalkulator OZC.exe'. Wyniki zapisują się w Dokumenty\Kalkulator OZC."

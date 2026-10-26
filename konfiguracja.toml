@@ -1,0 +1,377 @@
+# =============================================================================
+# KONFIGURACJA KALKULATORA OZC — jedno źródło wszystkich wartości stałych.
+#
+# Zasada: każda wartość ma komentarz, skąd pochodzi, i ocenę pewności:
+#   [PEWNE]          — wartość z normy, dobrze znana
+#   [DO WERYFIKACJI] — wartość z pamięci / źródła wtórnego, sprawdzić w tekście normy
+#   [SZACUNEK]       — przyjęcie inżynierskie (np. typowe U okien z danego okresu)
+#
+# Po zmianie tego pliku uruchom ponownie: python generuj_szablon.py
+# (szablon Excel kopiuje bibliotekę z tego pliku — nie edytuj jej w Excelu).
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Strefy klimatyczne — PN-EN 12831:2006, Załącznik krajowy NA, tablica NA.1
+#   theta_e  — projektowa temperatura zewnętrzna [°C]           [PEWNE]
+#   theta_me — średnia roczna temperatura zewnętrzna [°C]       [DO WERYFIKACJI]
+# -----------------------------------------------------------------------------
+[[strefy]]
+nazwa = "I"
+theta_e = -16
+theta_me = 7.7
+
+[[strefy]]
+nazwa = "II"
+theta_e = -18
+theta_me = 7.9
+
+[[strefy]]
+nazwa = "III"
+theta_e = -20
+theta_me = 7.6
+
+[[strefy]]
+nazwa = "IV"
+theta_e = -22
+theta_me = 6.9
+
+[[strefy]]
+nazwa = "V"
+theta_e = -24
+theta_me = 5.5
+
+
+# -----------------------------------------------------------------------------
+# Opory przejmowania ciepła [m²K/W] — PN-EN ISO 6946, tablica 1          [PEWNE]
+# Dla przegród do przestrzeni nieogrzewanej / wentylowanej szczeliny
+# przyjmuje się Rse = Rsi dla danego kierunku (PN-EN ISO 6946, p. 5.3.4).
+# -----------------------------------------------------------------------------
+[opory]
+Rsi_poziomy  = 0.13   # ściany
+Rsi_w_gore   = 0.10   # stropy pod strychem, dachy
+Rsi_w_dol    = 0.17   # podłogi, stropy nad piwnicą
+Rse          = 0.04   # przegroda bezpośrednio do powietrza zewnętrznego
+Rse_strych   = 0.10   # strop pod nieogrzewanym strychem (= Rsi w górę)
+Rse_piwnica  = 0.17   # strop nad nieogrzewaną piwnicą (= Rsi w dół)
+Rse_went     = 0.10   # dach z wentylowaną szczeliną pod pokryciem
+R_tynki      = 0.03   # [SZACUNEK] tynk wewn. + zewn. ok. 2 × 1,5 cm
+R_wykonczenie_dachu = 0.05  # [SZACUNEK] płyta g-k 12,5 mm (λ 0,25)
+
+
+# -----------------------------------------------------------------------------
+# Parametry pomocnicze
+# -----------------------------------------------------------------------------
+[parametry]
+udzial_drewna  = 0.10  # [SZACUNEK] udział krokwi/belek w izolacji między nimi (ok. 8×16 cm co 80–90 cm)
+lambda_drewna  = 0.13  # [PEWNE] drewno iglaste w poprzek włókien, PN-EN ISO 10456
+lambda_beton   = 1.70  # [PEWNE] beton zwykły (wylewka, chudy beton), PN-EN ISO 10456
+dodatek_alu    = 0.30  # [SZACUNEK] dodatek do U okien aluminiowych względem PCV/drewna
+
+
+# -----------------------------------------------------------------------------
+# Materiały konstrukcyjne ścian i fundamentów
+#   lambda — obliczeniowy współczynnik przewodzenia muru z zaprawą [W/mK]
+# Nazwy pokrywają się z polami protokołu audytu.
+# Źródło: typowe wartości (PN-EN ISO 10456, katalogi producentów, dawna PN-91/B-02020).
+# Mury mają duży rozrzut — przy ocieplonych ścianach wpływ na U jest mały.
+# -----------------------------------------------------------------------------
+[[materialy_konstrukcyjne]]
+nazwa = "Cegła ceramiczna pełna"
+lambda = 0.77
+uwagi = "[PEWNE] typowa wartość obliczeniowa"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Cegła dziurawka"
+lambda = 0.62
+uwagi = "[SZACUNEK]"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Bloczki z betonu komórkowego"
+lambda = 0.25
+uwagi = "[SZACUNEK] odmiana 600, starsze bloczki; nowe 400–500: 0,12–0,18"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Bloczki silikatowe"
+lambda = 0.80
+uwagi = "[SZACUNEK] zależnie od gęstości 0,6–1,0"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Pustak keramzytobetonowy"
+lambda = 0.40
+uwagi = "[SZACUNEK] duży rozrzut 0,25–0,50 zależnie od producenta"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Pustak ceramiczny"
+lambda = 0.30
+uwagi = "[SZACUNEK] pustaki typu MAX/Porotherm starszej generacji"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Pustak betonowy"
+lambda = 0.90
+uwagi = "[SZACUNEK] fundamentowy/drążony"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Bloczek betonowy"
+lambda = 1.30
+uwagi = "[SZACUNEK] pełny, fundamentowy"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Beton"
+lambda = 1.70
+uwagi = "[PEWNE] beton zwykły; żelbet 2,3"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Żużel (żużlobeton)"
+lambda = 0.70
+uwagi = "[SZACUNEK] pustaki żużlobetonowe 0,6–0,8"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Kamień"
+lambda = 2.30
+uwagi = "[SZACUNEK] piaskowiec; granit do 2,8"
+
+[[materialy_konstrukcyjne]]
+nazwa = "Drewno (bale)"
+lambda = 0.16
+uwagi = "[SZACUNEK]"
+
+
+# -----------------------------------------------------------------------------
+# Materiały izolacyjne
+#   lambda  — [W/mK];  R_stale — stały opór warstwy [m²K/W] (gdy nie zależy od grubości)
+# -----------------------------------------------------------------------------
+[[materialy_izolacyjne]]
+nazwa = "Styropian EPS"
+lambda = 0.040
+R_stale = 0
+uwagi = "[SZACUNEK] starszy styropian (ok. 2000 r.) 0,040–0,045; nowy biały 0,036–0,038"
+
+[[materialy_izolacyjne]]
+nazwa = "Styropian grafitowy"
+lambda = 0.031
+R_stale = 0
+uwagi = "[PEWNE] typowa wartość deklarowana"
+
+[[materialy_izolacyjne]]
+nazwa = "Styrodur XPS"
+lambda = 0.035
+R_stale = 0
+uwagi = "[PEWNE] typowa wartość deklarowana"
+
+[[materialy_izolacyjne]]
+nazwa = "Wełna mineralna"
+lambda = 0.040
+R_stale = 0
+uwagi = "[SZACUNEK] 0,033–0,045 zależnie od produktu i wieku"
+
+[[materialy_izolacyjne]]
+nazwa = "Pianka PUR"
+lambda = 0.030
+R_stale = 0
+uwagi = "[SZACUNEK] natryskowa zamkniętokomórkowa ok. 0,025, otwartokomórkowa ok. 0,037"
+
+[[materialy_izolacyjne]]
+nazwa = "Pustka powietrzna"
+lambda = 0
+R_stale = 0.18
+uwagi = "[PEWNE] PN-EN ISO 6946 tabl. 2: niewentylowana szczelina ≥ 25 mm, przepływ poziomy"
+
+[[materialy_izolacyjne]]
+nazwa = "Brak"
+lambda = 0
+R_stale = 0
+uwagi = "brak izolacji"
+
+
+# -----------------------------------------------------------------------------
+# Konstrukcje stropów
+#   lambda — dla konstrukcji jednorodnych [W/mK]
+#   R_stale — dla konstrukcji niejednorodnych [m²K/W]
+#   drewniany = 1 — izolacja leży między belkami (liczymy λ zastępczą z udziałem drewna)
+# -----------------------------------------------------------------------------
+[[stropy]]
+nazwa = "Żelbetowy monolityczny"
+lambda = 2.30
+R_stale = 0
+drewniany = 0
+uwagi = "[PEWNE] żelbet λ 2,3"
+
+[[stropy]]
+nazwa = "Gęstożebrowy"
+lambda = 0
+R_stale = 0.18
+drewniany = 0
+uwagi = "[SZACUNEK] Teriva/Akerman 24 cm ok. 0,16–0,21"
+
+[[stropy]]
+nazwa = "Drewniany"
+lambda = 0
+R_stale = 0.10
+drewniany = 1
+uwagi = "[SZACUNEK] deski + podsufitka; izolacja między belkami"
+
+
+# -----------------------------------------------------------------------------
+# Typowe U okien i drzwi wg roku montażu [W/m²K]                       [SZACUNEK]
+# Wiersz obowiązuje od roku z "progi_lat" do następnego progu.
+# Podstawa: wymagania WT dla okien/drzwi w danym okresie
+# (2008: okna 1,8 / 2014: 1,3 / 2017: 1,1 / 2021: 0,9; drzwi 2,6 / 1,7 / 1,5 / 1,3)
+# i typowa praktyka rynkowa. Do uzgodnienia z zespołem — to największa
+# niepewność dla starszych budynków.
+# -----------------------------------------------------------------------------
+[okna_drzwi_U]
+progi_lat    = [1900, 2000, 2010, 2017]
+jednoszybowe = [5.0, 5.0, 5.0, 5.0]
+dwuszybowe   = [2.6, 2.0, 1.4, 1.1]
+trzyszybowe  = [1.1, 1.1, 1.0, 0.9]
+drzwi        = [3.0, 2.6, 1.7, 1.3]
+
+
+# -----------------------------------------------------------------------------
+# Założenia domyślne — wstawiane do szablonu, gdy protokół czegoś nie podaje.
+# W szablonie oznaczone źródłem "założenie domyślne".
+# -----------------------------------------------------------------------------
+[zalozenia]
+t_int = 20.0                  # [PEWNE] PN-EN 12831 NA: pokoje mieszkalne 20°C
+h_kolanka = 1.0               # [SZACUNEK] typowa ścianka kolankowa
+pow_okna_male = 0.8           # [SZACUNEK] wg przykładów z protokołu: 0,8×1,0 / 1,2×0,6
+pow_okna_srednie = 1.8        # [SZACUNEK] wg przykładów z protokołu: 1,2×1,5 / 1,8×1,0
+pow_okna_duze = 2.8           # [SZACUNEK] wg przykładów z protokołu: 1,5×1,8 / 2,4×1,2
+pow_okna_dachowe = 0.9        # [SZACUNEK] typowe okno dachowe 78×118
+typ_zabudowy = "Wolnostojący"
+liczba_pieter = 0
+kalenica = "Wzdłuż dłuższego boku"
+podloga_izolacja = "Styropian EPS"
+dach_izolacja = "Wełna mineralna"
+woda_gruntowa_plytko = "Nie"
+okna_dachowe = 0
+
+
+# -----------------------------------------------------------------------------
+# Parametry metody obliczeń — PN-EN 12831:2006 (+ NA), PN-EN ISO 13370
+# -----------------------------------------------------------------------------
+[norma]
+# Mostki cieplne — metoda uproszczona U_kc = U_k + ΔU_tb.
+# Stosowane do wszystkich przegród poza gruntem i ścianami do sąsiada.
+delta_U_tb = 0.05            # [DO WERYFIKACJI] wartość z NA nieustalona; typowo 0,02–0,15
+
+# Grunt (PN-EN 12831 p. 7.1.3, załącznik D)
+fg1 = 1.45                   # [PEWNE] wpływ rocznych wahań temperatury zewnętrznej
+G_w = 1.0                    # [PEWNE] woda gruntowa głębiej niż 1 m
+G_w_plytko = 1.15            # [PEWNE] woda gruntowa płycej niż 1 m
+lambda_grunt = 2.0           # [PEWNE] PN-EN ISO 13370: grunt nieznany (glina/ił)
+# U_equiv liczone wzorami PN-EN ISO 13370 (płyta na gruncie / piwnica) zamiast
+# odczytu z tablic D.x normy 12831 — tablice są z tych wzorów wyprowadzone.   [DO WERYFIKACJI]
+
+# Wentylacja (PN-EN 12831 p. 7.2, załącznik D)
+n_min = 0.5                  # [DO WERYFIKACJI] minimalna krotność wymian [1/h] dla budynku mieszkalnego
+wsp_infiltracji_budynek = 0.5  # [DO WERYFIKACJI] na poziomie budynku infiltracja liczona z połową sumy pomieszczeń
+epsilon_do_10m = 1.0         # [PEWNE] współczynnik wysokości ε dla budynku do 10 m
+epsilon_10_30m = 1.2         # [PEWNE]
+epsilon_ponad_30m = 1.5      # [PEWNE]
+
+# Nagrzewanie po przerwie Φ_RH — domyślnie wyłączone (pompa ciepła pracuje bez przerw)
+f_RH = 0.0                   # [W/m²]
+
+[norma.n50]                  # [SZACUNEK] krotność wymian przy 50 Pa wg stopnia szczelności (3B protokołu)
+"Wysoki" = 3.0               # PN-EN 12831 tabl. D.? dom jednorodzinny: wysoka szczelność < 4
+"Średni" = 7.0               #   średnia 4–10
+"Niski" = 12.0               #   niska > 10
+
+[norma.e_oslonienie]         # [DO WERYFIKACJI] współczynnik osłonięcia e, budynek z > 1 otworem nieosłoniętym
+"Brak" = 0.05
+"Średnie" = 0.03
+"Dobre" = 0.02
+
+[norma.b_u]                  # [DO WERYFIKACJI] współczynnik redukcji temperatury b_u dla przestrzeni nieogrzewanych
+strych = 0.9                 # PN-EN 12831 tabl. D.?: poddasze, dach nieizolowany 0,9; izolowany 0,7
+piwnica = 0.5                # piwnica bez okien 0,5; z oknami 0,8
+garaz = 0.8                  # pomieszczenie z kilkoma ścianami zewnętrznymi i bramą — szacunek
+
+[norma.sasiad]
+theta_sasiad = 15.0          # [DO WERYFIKACJI] temperatura w ogrzewanym budynku sąsiednim [°C]
+
+
+# -----------------------------------------------------------------------------
+# Geometria — przyjęcia upraszczające
+# -----------------------------------------------------------------------------
+[geometria]
+grubosc_stropu = 0.30        # [SZACUNEK] strop międzykondygnacyjny z warstwami [m]
+grubosc_sciany_domyslna = 0.45  # [SZACUNEK] gdy brak danych o ścianie [m]
+piwnica_nad_terenem = 0.5    # [SZACUNEK] wysokość ściany piwnicy ponad terenem [m]
+rozbieznosc_powierzchni = 0.20  # ostrzeżenie, gdy pow. z obrysu różni się od deklarowanej o więcej
+
+
+# -----------------------------------------------------------------------------
+# Kontrola wiarygodności przez roczne zużycie paliwa                    [SZACUNEK]
+# energia_kWh — energia w jednostce paliwa; sprawnosc — średnioroczna sprawność starego źródła
+# -----------------------------------------------------------------------------
+[kontrola]
+godziny_pelnej_mocy = [1600, 2400]  # zakres równoważnych godzin pracy z mocą projektową w roku
+cwu_kWh_na_osobe = 1000             # roczne ciepło użytkowe na c.w.u. na osobę
+
+[kontrola.paliwa."Węgiel"]
+energia_kWh = { "t/rok" = 7000 }
+sprawnosc = 0.65
+
+[kontrola.paliwa."Ekogroszek"]
+energia_kWh = { "t/rok" = 7500 }
+sprawnosc = 0.75
+
+[kontrola.paliwa."Paliwo stałe (nieokreślone)"]
+energia_kWh = { "t/rok" = 6500 }
+sprawnosc = 0.65
+
+[kontrola.paliwa."Drewno"]
+energia_kWh = { "mp/rok" = 1600, "t/rok" = 4000 }
+sprawnosc = 0.60
+
+[kontrola.paliwa."Pellet"]
+energia_kWh = { "t/rok" = 4800 }
+sprawnosc = 0.85
+
+[kontrola.paliwa."Gaz ziemny"]
+energia_kWh = { "m3/rok" = 9.7, "kWh/rok" = 1 }
+sprawnosc = 0.90
+
+[kontrola.paliwa."Olej"]
+energia_kWh = { "l/rok" = 10.0 }
+sprawnosc = 0.88
+
+[kontrola.paliwa."Prąd"]
+energia_kWh = { "kWh/rok" = 1 }
+sprawnosc = 1.0
+
+
+# -----------------------------------------------------------------------------
+# Dobór pompy — orientacyjny, poza normą
+# -----------------------------------------------------------------------------
+[dobor]
+typoszereg_kW = [7, 9, 11, 13, 15, 17, 19, 21]   # moce z protokołu (pkt 1)
+cwu_kW_na_osobe = 0.25       # [SZACUNEK] dodatek mocy na c.w.u.
+blokada_h = 0                # domyślny czas blokad operatora [h/dobę]
+
+
+# -----------------------------------------------------------------------------
+# Listy rozwijane w szablonie (bez wartości liczbowych)
+# -----------------------------------------------------------------------------
+[listy]
+tak_nie       = ["Tak", "Nie"]
+typ_zabudowy  = ["Wolnostojący", "Bliźniak", "Szeregowiec skrajny", "Szeregowiec środkowy"]
+konstrukcja   = ["Lekka", "Średnia", "Ciężka"]
+piwnica       = ["Brak", "Nieogrzewana", "Ogrzewana"]
+garaz         = ["Nie", "Tak – nieogrzewany"]
+obrys         = ["Prostokąt", "Inny (podaj pole i obwód)"]
+dach_rodzaj   = ["Skośny dwuspadowy", "Skośny wielospadowy", "Płaski"]
+kalenica      = ["Wzdłuż dłuższego boku", "Wzdłuż krótszego boku"]
+okna_typ      = ["jednoszybowe", "dwuszybowe", "trzyszybowe"]
+okna_material = ["Plastik", "Drewno", "Aluminium"]
+drzwi_material = ["Plastik", "Drewno", "Stal"]
+wentylacja    = ["Grawitacyjna", "Mechaniczna", "Mechaniczna z odzyskiem"]
+szczelnosc    = ["Niski", "Średni", "Wysoki"]
+oslonienie    = ["Brak", "Średnie", "Dobre"]
+paliwo        = ["Węgiel", "Ekogroszek", "Drewno", "Pellet", "Paliwo stałe (nieokreślone)", "Gaz ziemny", "Olej", "Prąd", "Inne"]
+jednostka     = ["t/rok", "mp/rok", "m3/rok", "l/rok", "kWh/rok"]
+instalacja    = ["Grzejnikowa", "Płaszczyznowa", "Mieszana"]
+zrodlo        = ["protokół", "protokół – odczyt niepewny", "założenie domyślne", "uzupełnione przez człowieka", "AI – do sprawdzenia"]
