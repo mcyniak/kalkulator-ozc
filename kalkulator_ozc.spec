@@ -6,6 +6,7 @@ datas = [
     ("konfiguracja.toml", "."),
     ("szablony/szablon_OZC.xlsx", "szablony"),
     ("assets/logo_flexipower.png", "assets"),
+    (".streamlit/config.toml", ".streamlit"),
 ]
 binaries = []
 # app.py importuje moduły ozc w czasie działania — PyInstaller ich nie widzi, więc dołączamy cały pakiet.

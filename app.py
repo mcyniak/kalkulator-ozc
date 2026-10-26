@@ -17,7 +17,7 @@ from ozc import __version__, klucz_api, ustawienia
 from ozc.ai_odczyt import MODEL, BladOdczytu, Pytanie, odczytaj_audyt
 from ozc.import_flexipower import importuj, rozpoznaj
 from ozc.dane import BladDanych, Dane, Miejsce, normalizuj, opcje_listy, uzupelnij_domyslne, wczytaj_xlsx
-from ozc.konfiguracja import KATALOG_DANYCH, wczytaj_konfiguracje
+from ozc.konfiguracja import KATALOG_DANYCH, KATALOG_PROJEKTU, wczytaj_konfiguracje
 from ozc.obliczenia import etykieta_z_sekcja, oblicz, pola_do_uzupelnienia, zalozenia_kluczowe
 from ozc.podglad import jedna_strona, liczba_stron, wycinek
 from ozc.pola import POLA, POLA_WEJSCIOWE, Pole, Sekcja
@@ -35,6 +35,40 @@ BRAK_KLUCZA = ("Skan wymaga odczytu przez AI, a nie ma klucza API — wpisz go w
 st.set_page_config(page_title="Kalkulator OZC", page_icon="🔥", layout="wide")
 ss = st.session_state
 klucz_api.zastosuj_zapisany()
+
+LOGO = KATALOG_PROJEKTU / "assets" / "logo_flexipower.png"
+if LOGO.exists():
+    st.logo(str(LOGO), size="large")
+st.markdown("""<style>
+.block-container {padding-top: 2.2rem; max-width: 1180px;}
+h1 {font-weight: 750; letter-spacing: -0.02em;}
+.ozc-podtytul {color: #5B6470; margin: -0.6rem 0 1.4rem 0; font-size: 1.02rem;}
+.ozc-krok {font-size: 0.75rem; font-weight: 700; color: #E5394B; text-transform: uppercase; letter-spacing: .08em;}
+.ozc-tytul {font-weight: 650; font-size: 1.12rem; margin: .1rem 0 .4rem 0;}
+.ozc-tekst {color: #5B6470; font-size: .92rem; line-height: 1.5;}
+.ozc-ikona {font-size: 1.7rem; line-height: 1;}
+</style>""", unsafe_allow_html=True)
+
+
+def naglowek(tytul: str, podtytul: str) -> None:
+    st.title(tytul)
+    st.markdown(f'<div class="ozc-podtytul">{podtytul}</div>', unsafe_allow_html=True)
+
+
+def krok(numer: int | None, tytul: str, cel=st) -> None:
+    etykieta = f'<div class="ozc-krok">Krok {numer}</div>' if numer else ""
+    cel.markdown(f'{etykieta}<div class="ozc-tytul">{tytul}</div>', unsafe_allow_html=True)
+
+
+def karta(kolumna, ikona: str, numer: int, tytul: str, tekst: str) -> None:
+    with kolumna.container(border=True, height="stretch"):
+        st.markdown(f'<div class="ozc-ikona">{ikona}</div><div class="ozc-krok" style="margin-top:.6rem">Krok {numer}</div>'
+                    f'<div class="ozc-tytul">{tytul}</div><div class="ozc-tekst">{tekst}</div>',
+                    unsafe_allow_html=True)
+
+
+def liczba_pl(x: float, miejsc: int = 2) -> str:
+    return f"{x:.{miejsc}f}".replace(".", ",")
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +270,7 @@ def sekcja_do_recznego(a: dict, prefiks: str, braki: list[str], niepewne: list[s
             ("👁 Do potwierdzenia", niepewne, "Te wartości są odczytane niepewnie albo wyliczone z założeniem — porównaj z wycinkiem i popraw.")):
         if not klucze:
             continue
-        st.subheader(tytul)
+        krok(None, tytul)
         st.caption(opis)
         for k in klucze:
             p = POLA_WEJSCIOWE[k]
@@ -306,7 +340,11 @@ def sprawdzanie(a: dict, i: int) -> None:
         return
     braki, niepewne = do_recznego(a)
     if a["wynik"]:
-        st.metric(f"OZC — {a['dane'].get('adres') or a['nazwa']}", f"{a['wynik'].phi_HL_kW:.2f} kW")
+        w = a["wynik"]
+        with st.container(border=True):
+            st.metric(f"Projektowe obciążenie cieplne — {nazwa_audytu(a)}", f"{liczba_pl(w.phi_HL_kW)} kW")
+            st.caption(f"{w.phi_HL / w.pow_ogrzewana:.0f} W/m²  ·  powierzchnia ogrzewana {w.pow_ogrzewana:.0f} m²  ·  "
+                       f"kubatura {w.kubatura:.0f} m³  ·  strefa {a['dane'].get('strefa')} (θe = {w.theta_e:g} °C)")
         if a["wynik"].ostrzezenia:
             st.warning("**Do sprawdzenia:**\n\n" + "\n".join(f"- {o}" for o in a["wynik"].ostrzezenia))
     elif not braki and a["blad"]:
@@ -362,20 +400,31 @@ def sprawdzanie(a: dict, i: int) -> None:
 # ---------------------------------------------------------------------------
 
 def strona_audyty() -> None:
-    st.title("Audyty")
-    st.markdown("**1.** Wrzuć audyty — **każdy PDF to osobny adres** (można wiele naraz). Działają wszystkie "
-                "formaty: komputerowe audyty FlexiPower (czytane od razu), skany i zdjęcia protokołów odręcznych — "
-                "stare i nowe wersje formularza (czyta je AI, potrzebny klucz w „Ustawieniach”) — oraz wypełniony "
-                "szablon Excel. Zdjęcia stron jednego protokołu wrzuć razem, w osobnej partii.")
-    pliki = st.file_uploader("Pliki audytów", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
-                             accept_multiple_files=True, label_visibility="collapsed",
-                             key=f"wgrane_{ss.get('wersja', 0)}")
-    if pliki and st.button(f"📄 Odczytaj ({len(grupuj_pliki(pliki))})", type="primary"):
-        wczytaj_partie(pliki)
-        st.rerun()
+    naglowek("Audyty", "Projektowe obciążenie cieplne (OZC) z audytów — wrzuć pliki, sprawdź wątpliwe pola, zapisz raporty.")
+    with st.container(border=True):
+        krok(1, "📥 Wrzuć audyty")
+        st.markdown('<div class="ozc-tekst"><b>Każdy PDF to osobny adres</b>, można wiele naraz. Działają komputerowe '
+                    'audyty FlexiPower (czytane od razu), skany i zdjęcia protokołów odręcznych — stare i nowe wersje '
+                    'formularza (czyta je AI, potrzebny klucz w „Ustawieniach”) — oraz wypełniony szablon Excel. '
+                    'Zdjęcia stron jednego protokołu wrzuć razem, w osobnej partii.</div>', unsafe_allow_html=True)
+        pliki = st.file_uploader("Pliki audytów", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
+                                 accept_multiple_files=True, label_visibility="collapsed",
+                                 key=f"wgrane_{ss.get('wersja', 0)}")
+        if pliki and st.button(f"📄 Odczytaj ({len(grupuj_pliki(pliki))})", type="primary"):
+            wczytaj_partie(pliki)
+            st.rerun()
 
     audyty = ss.get("audyty")
     if not audyty:
+        st.write("")
+        krok(None, "Jak to działa")
+        c = st.columns(3)
+        karta(c[0], "📥", 1, "Wrzuć", "Przeciągnij PDF-y audytów. Komputerowe audyty program czyta od razu, "
+                                      "skany odręczne — przez AI, ze wskazaniem miejsca każdej wartości.")
+        karta(c[1], "🔎", 2, "Sprawdź", "Zobaczysz tylko pola, których nie udało się odczytać albo które są "
+                                        "szacunkiem — obok wycinek audytu, w którym trzeba ich szukać.")
+        karta(c[2], "✅", 3, "Zatwierdź", "Jedno kliknięcie liczy OZC, zapisuje raport Word i PDF "
+                                          "i otwiera następny audyt z partii.")
         return
 
     komunikat = ss.pop("komunikat", None)
@@ -384,13 +433,18 @@ def strona_audyty() -> None:
     zapisane = sum(1 for a in audyty if a["zapisano"])
     bledy = sum(1 for a in audyty if a["dane"] is None)
     pozostale = len(audyty) - zapisane - bledy
-    st.markdown(f"**2.** Wyniki: **{zapisane}** zapisanych, **{pozostale}** do sprawdzenia"
-                + (f", **{bledy}** nieodczytanych" if bledy else "") + f" (razem {len(audyty)}).")
+    st.write("")
+    krok(2, "📋 Wyniki partii")
+    m = st.columns(4)
+    m[0].metric("W partii", len(audyty), border=True)
+    m[1].metric("Zapisane", zapisane, border=True)
+    m[2].metric("Do sprawdzenia", pozostale, border=True)
+    m[3].metric("Nieodczytane", bledy, border=True)
     if pozostale == 0 and zapisane:
         st.success("Wszystkie odczytane audyty są zapisane — raporty są w zakładce „Lista adresów”.")
     tabela = pd.DataFrame([{
         "Adres": nazwa_audytu(a),
-        "OZC [kW]": f"{a['wynik'].phi_HL_kW:.2f}".replace(".", ",") if a["wynik"] else "—",
+        "OZC [kW]": liczba_pl(a["wynik"].phi_HL_kW) if a["wynik"] else "—",
         "Status": status(a),
         "Plik": a["nazwa"],
     } for a in audyty])
@@ -408,10 +462,12 @@ def strona_audyty() -> None:
         ss.wersja = ss.get("wersja", 0) + 1
         st.rerun()
 
-    st.markdown("**3.** Sprawdź audyt — po zatwierdzeniu program sam przejdzie do następnego.")
+    st.write("")
+    krok(3, "🔎 Sprawdź audyt")
+    st.caption("Po zatwierdzeniu program sam przejdzie do następnego audytu z partii.")
     if "skok_do" in ss:
         ss.wybrany_audyt = min(ss.pop("skok_do"), len(audyty) - 1)
-    etykiety = [f"{i + 1}. {nazwa_audytu(a)} — {status(a)}" for i, a in enumerate(audyty)]
+    etykiety = [f"{i + 1}. {a.setdefault('etykieta', nazwa_audytu(a))}" for i, a in enumerate(audyty)]
     i = st.selectbox("Audyt", range(len(audyty)), format_func=lambda j: etykiety[j], label_visibility="collapsed",
                      key="wybrany_audyt")
     sprawdzanie(audyty[min(i, len(audyty) - 1)], min(i, len(audyty) - 1))
@@ -439,27 +495,33 @@ def _excel_z_linkami(adresy: list[dict]) -> bytes:
 
 
 def strona_lista() -> None:
-    st.title("Lista adresów")
+    naglowek("Lista adresów", "Zapisane adresy z wynikiem OZC i raportami Word / PDF.")
     adresy = lista_adresow(KATALOG_ADRESOW)
     if not adresy:
-        st.info("Nie zapisano jeszcze żadnego adresu.")
+        st.info("Nie zapisano jeszcze żadnego adresu — zatwierdź audyt w zakładce „Audyty”.")
         return
-    szukaj = st.text_input("Szukaj adresu", placeholder="np. Lipowa", label_visibility="collapsed")
+    m = st.columns(3)
+    m[0].metric("Adresy", len(adresy), border=True)
+    m[1].metric("Z raportem PDF", sum(1 for a in adresy if a.get("raport_pdf")), border=True)
+    m[2].metric("Średnie OZC", f"{liczba_pl(sum(a.get('phi_HL_kW', 0) for a in adresy) / len(adresy))} kW",
+                border=True)
+    szukaj = st.text_input("Szukaj adresu", placeholder="🔍 Szukaj adresu, np. Lipowa", label_visibility="collapsed")
     if szukaj:
         adresy = [a for a in adresy if szukaj.casefold() in (a.get("adres") or "").casefold()]
 
-    naglowek = st.columns([5, 2, 2, 2])
-    for kol, t in zip(naglowek, ("**Adres**", "**OZC [kW]**", "**Word**", "**PDF**")):
+    lista = st.container(border=True)
+    kolumny = lista.columns([5, 2, 2, 2])
+    for kol, t in zip(kolumny, ("**Adres**", "**OZC [kW]**", "**📄 Word**", "**📕 PDF**")):
         kol.markdown(t)
     for i, a in enumerate(adresy):
-        c = st.columns([5, 2, 2, 2])
+        c = lista.columns([5, 2, 2, 2], vertical_alignment="center")
         c[0].write(a.get("adres") or "—")
         c[1].write(f"{a.get('phi_HL_kW', 0):.2f}".replace(".", ","))
         docx, pdf = a.get("raport_docx"), a.get("raport_pdf")
         if docx and Path(docx).exists():
-            if c[2].button("📄 Otwórz", key=f"docx_{i}"):
+            if c[2].button("Otwórz", key=f"docx_{i}", width="stretch"):
                 os.startfile(docx)
-        elif c[2].button("Utwórz raport", key=f"utworz_{i}"):
+        elif c[2].button("Utwórz", key=f"utworz_{i}", width="stretch"):
             with st.spinner("Tworzę raport…"):
                 try:
                     raport_dla_folderu(Path(a["folder"]))
@@ -467,12 +529,12 @@ def strona_lista() -> None:
                     st.error("Nie da się policzyć: " + "; ".join(e.problemy))
             st.rerun()
         if pdf and Path(pdf).exists():
-            if c[3].button("📕 Otwórz", key=f"pdf_{i}"):
+            if c[3].button("Otwórz", key=f"pdf_{i}", width="stretch"):
                 os.startfile(pdf)
         elif docx:
             c[3].caption("brak Worda do PDF")
         if a.get("kopia_raportu_blad"):
-            st.caption(f"⚠ {a['kopia_raportu_blad']}")
+            lista.caption(f"⚠ {a['kopia_raportu_blad']}")
 
     st.divider()
     c1, c2 = st.columns(2)
@@ -483,8 +545,8 @@ def strona_lista() -> None:
 
 
 def strona_ustawienia() -> None:
-    st.title("Ustawienia")
-    st.subheader("Klucz API Anthropic")
+    naglowek("Ustawienia", "Klucz do odczytu skanów i folder, do którego trafiają raporty.")
+    st.subheader("🔑 Klucz API Anthropic")
     aktywny = klucz_api.aktywny_klucz()
     if aktywny:
         st.success(f"Klucz jest ustawiony: `{klucz_api.zamaskowany(aktywny)}` — odczyt PDF przez AI działa.")
@@ -508,7 +570,8 @@ def strona_ustawienia() -> None:
     st.caption(f"Klucz zapisuje się tylko na tym komputerze, w pliku {klucz_api.PLIK_KLUCZA}. "
                "Klucz wygenerujesz w konsoli Anthropic (platform.claude.com → API Keys).")
 
-    st.subheader("Folder na raporty OZC")
+    st.divider()
+    st.subheader("📂 Folder na raporty OZC")
     obecny = ustawienia.folder_raportow()
     with st.form("folder"):
         nowy_folder = st.text_input(
@@ -524,7 +587,8 @@ def strona_ustawienia() -> None:
                 st.rerun()
     st.caption("Raporty zawsze zapisują się też w folderze adresu programu. Puste pole = bez dodatkowej kopii.")
 
-    st.subheader("Jak to działa")
+    st.divider()
+    st.subheader("ℹ️ Jak to działa")
     st.markdown("""
 - Komputerowe audyty FlexiPower program czyta sam; skany protokołów odręcznych (stare i nowe wersje formularza)
   czyta AI i przy każdej wartości wskazuje miejsce w dokumencie. Czego nie odczytano albo co jest szacunkiem,
@@ -538,11 +602,14 @@ def strona_ustawienia() -> None:
 
 
 strony = {"Audyty": strona_audyty, "Lista adresów": strona_lista, "Ustawienia": strona_ustawienia}
-wybrana = st.sidebar.radio("Menu", list(strony))
+ikony = {"Audyty": "📥 Audyty", "Lista adresów": "📋 Lista adresów", "Ustawienia": "⚙️ Ustawienia"}
+st.sidebar.markdown("**Kalkulator OZC**  \nobciążenie cieplne budynku")
+wybrana = st.sidebar.radio("Menu", list(strony), format_func=ikony.get, label_visibility="collapsed")
 if not klucz_api.aktywny_klucz():
     st.sidebar.warning("Brak klucza API — wpisz go w „Ustawieniach”. Bez klucza działają komputerowe audyty "
                        "FlexiPower i pliki Excel; skany wymagają klucza.")
 st.sidebar.divider()
+st.sidebar.caption(f"Wersja {__version__} · PN-EN 12831")
 if st.sidebar.button("⏻ Zamknij program"):
     st.sidebar.info("Program zamknięty — możesz zamknąć tę kartę przeglądarki.")
     threading.Timer(1.0, os._exit, [0]).start()

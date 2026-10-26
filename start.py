@@ -7,6 +7,7 @@ import os
 import socket
 import sys
 import threading
+import tomllib
 import traceback
 import urllib.request
 import webbrowser
@@ -25,6 +26,25 @@ import ozc.raport_word  # noqa: F401
 from streamlit.web import cli
 
 PORT = int(os.environ.get("OZC_PORT", 8599))
+
+
+def opcje_wygladu(katalog: Path) -> list[str]:
+    """Ustawienia z .streamlit/config.toml jako flagi — exe nie startuje z katalogu projektu, więc sam plik nie wystarczy."""
+    plik = katalog / ".streamlit" / "config.toml"
+    if not plik.exists():
+        return []
+    flagi = []
+
+    def dodaj(prefiks: str, sekcja: dict) -> None:
+        for k, v in sekcja.items():
+            if isinstance(v, dict):
+                dodaj(f"{prefiks}.{k}", v)
+            else:
+                flagi.append(f"--{prefiks}.{k}={str(v).lower() if isinstance(v, bool) else v}")
+
+    for nazwa, sekcja in tomllib.loads(plik.read_text(encoding="utf-8")).items():
+        dodaj(nazwa, sekcja)
+    return flagi
 KATALOG_LOGU = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Kalkulator OZC"
 
 
@@ -84,7 +104,7 @@ def main() -> None:
     sys.argv = ["streamlit", "run", str(katalog / "app.py"), f"--server.port={port}",
                 "--server.address=localhost", "--server.headless=true",
                 "--browser.gatherUsageStats=false", "--global.developmentMode=false",
-                "--client.toolbarMode=viewer"]
+                "--client.toolbarMode=viewer", *opcje_wygladu(katalog)]
     sys.exit(cli.main())
 
 

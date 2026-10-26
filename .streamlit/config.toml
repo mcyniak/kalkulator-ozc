@@ -1,0 +1,14 @@
+# Wygląd aplikacji (kolory FlexiPower Group). start.py przekazuje te ustawienia także wersji .exe.
+[theme]
+base = "light"
+primaryColor = "#E5394B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5F7"
+textColor = "#1E2329"
+linkColor = "#C62D3E"
+borderColor = "#E3E5EA"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#F7F7F9"
