@@ -10,14 +10,16 @@ Wyniki zapisują się w `Dokumenty\Kalkulator OZC` — nowa wersja programu ich 
 Dla programisty: dwuklik `uruchom.bat` (Python 3.11+, środowisko tworzy się samo).
 Nowe wydanie .exe: `git tag v0.2.0 && git push origin v0.2.0` — GitHub zbuduje ZIP automatycznie.
 
-Odczyt PDF przez AI wymaga klucza API Anthropic — wpisz go raz w zakładce **Ustawienia**
-(zapisuje się lokalnie w `%LOCALAPPDATA%\Kalkulator OZC`, nigdy w kodzie ani repozytorium).
+Komputerowe audyty FlexiPower (PDF z tekstem) program czyta sam — bez AI i bez klucza.
+Skany i zdjęcia protokołów odręcznych czyta AI, co wymaga klucza API Anthropic — wpisz go raz w zakładce
+**Ustawienia** (zapisuje się lokalnie w `%LOCALAPPDATA%\Kalkulator OZC`, nigdy w kodzie ani repozytorium).
 
 ## Praca z audytami
 1. **Audyty** → przeciągnij PDF-y (każdy PDF = osobny adres, można wiele naraz) → „Odczytaj”.
    Zdjęcia stron jednego protokołu wrzuca się razem w osobnej partii. Działa też wypełniony `szablony/szablon_OZC.xlsx`.
 2. Tabela pokazuje OZC i status każdego audytu. Otwórz audyt: sekcja **Do uzupełnienia / Do potwierdzenia**
-   pokazuje tylko pola, których AI nie odczytało albo nie było pewne — z wycinkiem skanu w tym miejscu.
+   pokazuje tylko pola, których nie udało się odczytać albo które są szacunkiem — z wycinkiem audytu w tym miejscu.
+   Ostrzeżenia (np. ściana bez ocieplenia, nietypowe W/m²) wskazują audyty, w których zwykle jest błąd danych.
    Wpisz lub popraw wartości i kliknij „Przelicz i potwierdź”.
 3. „Zapisz adres i utwórz raport” (albo „Zapisz wszystkie gotowe”) — powstaje raport OZC w Wordzie i PDF
    (`OZC_<adres>_<data>_<godzina>`) w układzie FlexiPower Group. PDF tworzy zainstalowany Word.

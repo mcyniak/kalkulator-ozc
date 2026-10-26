@@ -47,6 +47,12 @@ class Wynik:
     zalozenia: list[str] = field(default_factory=list)
     kontrola_paliwa: dict | None = None
     dobor: dict | None = None
+    pow_ogrzewana: float = 0.0            # [m²] podstawa wskaźników: deklarowana, a bez niej z obrysu
+
+    @property
+    def kubatura(self) -> float:
+        """Kubatura przyjęta do obliczeń [m³] (wentylacja) — ta sama w raporcie i wskaźnikach."""
+        return self.wentylacja["V"]
 
     @property
     def phi_HL_kW(self) -> float:
@@ -184,6 +190,10 @@ def _domysl_brakujace(d: Dane, notatki: list[str]) -> None:
     przyjmij("wentylacja", "Grawitacyjna", "najczęstszy przypadek")
     przyjmij("szczelnosc", "Średni", "wartość środkowa")
     przyjmij("oslonienie", "Średnie", "wartość środkowa")
+    if d.get("drzwi_ilosc") and d.get("drzwi_U_reczne") is None:
+        rok = d.get("okna_rok") or d.get("rok_budowy")
+        if rok:
+            przyjmij("drzwi_rok", int(rok), "jak okna / rok budowy")
 
     # Strop / dach bez podanej izolacji: audyty często pomijają ocieplenie — założenie jawne, do potwierdzenia.
     zal = wczytaj_konfiguracje()["zalozenia"]
@@ -234,7 +244,38 @@ def wspolczynniki_U(d: Dane) -> dict[str, float]:
             d.get("okna_typ"), d.get("okna_rok"), d.get("okna_material")))
     if d.get("drzwi_U_reczne") is not None or d.get("drzwi_rok"):
         U["drzwi"] = _u(d, "drzwi_U_reczne", lambda: przegrody.u_drzwi(d.get("drzwi_rok")))
+    # U okien/drzwi wpisane z audytu to zwykle wartości katalogowe — bez strat na osadzeniu.
+    dodatek = wczytaj_konfiguracje()["norma"].get("dodatek_U_okna_drzwi", 0.0)
+    for k, reczne in (("okna", "okna_U_reczne"), ("drzwi", "drzwi_U_reczne")):
+        if k in U and d.get(reczne) is not None:
+            U[k] += dodatek
     return U
+
+
+def kontrole_wiarygodnosci(d: Dane, U: dict, geo: Geometria, a_okien: float, phi_HL: float, cfg: dict) -> list[str]:
+    """Nietypowe wartości, które zwykle oznaczają błąd w audycie lub odczycie — do sprawdzenia przez człowieka."""
+    k = cfg["kontrola"]
+    uwagi = []
+    u_sc = U.get("sciana")
+    rok = d.get("rok_budowy")
+    if u_sc and u_sc > k["U_sciany_max"]:
+        uwagi.append(f"Ściana o U = {u_sc:.2f} W/m²K (praktycznie bez ocieplenia)"
+                     + (f" w budynku z {rok:.0f} r." if rok else "")
+                     + " — sprawdź warstwy ściany w audycie, to częsty błąd danych.")
+    pow_ = d.get("pow_ogrz_dekl") or geo.pow_ogrzewana
+    if pow_ and a_okien:
+        udzial = a_okien / pow_
+        lo, hi = k["udzial_okien"]
+        if not lo <= udzial <= hi:
+            uwagi.append(f"Okna to {udzial:.0%} powierzchni ogrzewanej (typowo {lo:.0%}–{hi:.0%}) — sprawdź liczbę "
+                         "i wielkość okien.")
+    if pow_:
+        wsk = phi_HL / pow_
+        lo, hi = k["W_na_m2"]
+        if not lo <= wsk <= hi:
+            uwagi.append(f"Wynik {wsk:.0f} W/m² jest nietypowy dla domu jednorodzinnego (zwykle {lo}–{hi} W/m²) — "
+                         "sprawdź dane wejściowe.")
+    return uwagi
 
 
 def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
@@ -383,34 +424,40 @@ def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
               f"- {opis_v}",
               f"- Φ_V = 0,34 · V̇ · ΔT = 0,34 · {v_obl:.1f} · {dT:g} = **{phi_V:.0f} W**"]
 
-    phi_RH = n["f_RH"] * geo.pow_ogrzewana
+    pow_ref = d.get("pow_ogrz_dekl") or geo.pow_ogrzewana
+    phi_RH = n["f_RH"] * pow_ref
     phi_HL = phi_T + phi_V + phi_RH
     kroki += ["", "### 6. Wynik",
               f"- Φ_T = {phi_T:.0f} W, Φ_V = {phi_V:.0f} W, Φ_RH = {phi_RH:.0f} W",
               f"- **Φ_HL = {phi_HL:.0f} W = {phi_HL / 1000:.2f} kW** "
-              f"({phi_HL / geo.pow_ogrzewana:.0f} W/m² pow. ogrzewanej)"]
+              f"({phi_HL / pow_ref:.0f} W/m² pow. ogrzewanej {pow_ref:.0f} m², {phi_HL / V:.1f} W/m³)"]
 
     # --- kontrole ---
-    ostrzezenia = list(notatki)
+    # Ostrzeżenia = tylko sytuacje, które zwykle oznaczają błąd danych. Przyjęte założenia trafiają do „zalozenia”.
+    ostrzezenia: list[str] = []
     dekl = d.get("pow_ogrz_dekl")
     if dekl:
         roznica = (geo.pow_ogrzewana - dekl) / dekl
-        if abs(roznica) > cfg["geometria"]["rozbieznosc_powierzchni"]:
-            ostrzezenia.append(f"Powierzchnia ogrzewana z obrysu ≈ {geo.pow_ogrzewana:.0f} m² różni się od deklarowanej "
-                               f"{dekl:g} m² o {roznica:+.0%} — sprawdź wymiary obrysu i kondygnacje.")
+        opis = (f"Powierzchnia ogrzewana z obrysu ≈ {geo.pow_ogrzewana:.0f} m² różni się od deklarowanej "
+                f"{dekl:g} m² o {roznica:+.0%}")
+        if abs(roznica) > cfg["geometria"]["rozbieznosc_ostrzezenie"]:
+            ostrzezenia.append(opis + " — prawdopodobnie błąd wymiarów lub liczby kondygnacji, sprawdź.")
+        elif abs(roznica) > cfg["geometria"]["rozbieznosc_powierzchni"]:
+            notatki.append(opis + " (zwykle część bryły jest nieogrzewana; wentylację liczono z powierzchni deklarowanej).")
     for e in elementy:
         if e.grupa in ("Strop pod strychem", "Dach skośny", "Stropodach") and e.U > 1.0:
             ostrzezenia.append(f"{e.grupa} bez ocieplenia (U = {e.U:.2f}) daje {e.phi / 1000:.1f} kW strat — "
                                "sprawdź, czy audyt nie pominął izolacji.")
+    ostrzezenia += kontrole_wiarygodnosci(d, U, geo, a_okna_pion + a_okna_dach, phi_HL, cfg)
     if d.get("garaz", "Nie") != "Nie":
         ostrzezenia.append("Garaż w bryle budynku nie jest jeszcze uwzględniany osobno — policzono go jak część ogrzewaną "
                            "(wynik lekko zawyżony).")
-    zalozenia = [f"{_etykieta(k)}: {d.get(k)} — {zr}" for k, zr in d.zrodla.items()
-                 if k in POLA_WEJSCIOWE and zr in (ZRODLO_DOMYSLNE, "protokół – odczyt niepewny", "AI – do sprawdzenia")
+    zalozenia = notatki + [f"{_etykieta(k)}: {d.get(k)} — {zr}" for k, zr in d.zrodla.items()
+                 if k in POLA_WEJSCIOWE and zr in (ZRODLO_DOMYSLNE, "protokół – odczyt niepewny", "AI – do sprawdzenia", "wyliczone z audytu")
                  and d.get(k) is not None]
 
     wynik = Wynik(phi_HL, phi_T, phi_V, phi_RH, th_i, th_e, th_me, elementy, geo, wentylacja, U,
-                  kroki, ostrzezenia, zalozenia)
+                  kroki, ostrzezenia, zalozenia, pow_ogrzewana=pow_ref)
     wynik.kontrola_paliwa = kontrola_paliwa(d, phi_HL / 1000, cfg)
     if wynik.kontrola_paliwa and wynik.kontrola_paliwa.get("ostrzezenie"):
         wynik.ostrzezenia.append(wynik.kontrola_paliwa["ostrzezenie"])

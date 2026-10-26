@@ -1,0 +1,62 @@
+FLEXIPOWER GROUP
+Ustalenia montażowe pompy ciepła
+Niniejszy dokument zawiera wyniki uzgodnień montażowych przeprowadzonych dla poniższej lokalizacji.
+PODSTAWOWE INFORMACJE
+Adres: Lipowa 7, 00-001 Przykładowo
+Gmina: Przykładowo
+Właściciel: Jan Testowy
+Dane budynku
+Liczba mieszkańców 4
+Ilosc okien 1
+Masywność konstrukcji Duża (murowa/żelbetowa)
+Powierzchnia budynku 160
+Powierzchnia ogrzewana 160
+Rok budowy 2004
+Stopień szczelności obudowy Średni (4-10 h⁻¹)
+Typ wentylacji Wentylacja naturalna grawitacyjna
+Wymiary okien 0,30x0,60
+Warstwy budynku Ściana zewnętrzna:
+ Warstwa 1: Tynk cementowo-wapienny — grubość 2
+cm
+ Warstwa 2: Cegła dziurawka — grubość 18 cm
+ Warstwa 3: Styropian — grubość 4 cm
+ Warstwa 4: Cegła dziurawka — grubość 18 cm
+Ściana fundamentowa:
+ Warstwa 1: Beton — grubość 50 cm
+Podłoga na gruncie:
+ Warstwa 1: Wylewka betonowa — grubość 8 cm
+ Warstwa 2: Styropian — grubość 10 cm
+ Warstwa 3: Podsypka z piasku — grubość 20 cm
+unheated ceiling:
+ Warstwa 1: Żelbet (U = 1,70 W/(m·K)) — grubość 9 cm
+Warstwy ścian Warstwy ściany / przegrody nr 1:
+ Warstwa 1: Tynk cementowo-wapienny — grubość 2 cm
+Ściany elewacyjne Ściana elewacyjna nr 1:
+ Kształt: prostokąt
+ szerokość: 11
+ wysokość: 5.6
+ Okno 1: powierzchnia: 6, izolacja: Uw = 0,9–1,1
+Ściana elewacyjna nr 2:
+ Kształt: prostokąt_trójkąt
+ szer. podstawy: 10
+ wys. szczytu: 8.5
+ wysokość boku: 5.6
+ Okno 1: powierzchnia: 1.5, izolacja: Uw = 0,9–1,1
+ Drzwi 1: typ: zewnętrzne_wejściowe, powierzchnia: 2,
+izolacja: nie_znam
+ Drzwi 2: typ: balkonowe_tarasowe, powierzchnia: 4,
+izolacja: Ud 0,9 ≤
+Ściana elewacyjna nr 3:
+ Kształt: prostokąt
+ szerokość: 11
+ wysokość: 5.6
+ Okno 1: powierzchnia: 0.8, izolacja: Uw = 0,9–1,1
+ Drzwi 1: typ: bramy_garazowe, powierzchnia: 8,
+izolacja: nie_znam
+Ściana elewacyjna nr 4:
+ Kształt: prostokąt_trójkąt
+ szer. podstawy: 10
+ wys. szczytu: 8.5
+ wysokość boku: 5.6
+Protokół uzgodnień montażowych - pompa ciepła
+Liczba mieszkańców 4

@@ -51,10 +51,11 @@ def drewniany(konstr: str) -> str:
     return f"INDEX(bib_st_drewn,MATCH({konstr},lst_stropy,0))"
 
 
-def u_lub_reczne(reczne: str, wyrazenie: str, wymagane: list[str]) -> str:
-    """U wpisane ręcznie albo wyliczone; "–", gdy brakuje któregoś z pól `wymagane`."""
+def u_lub_reczne(reczne: str, wyrazenie: str, wymagane: list[str], dodatek: str = "") -> str:
+    """U wpisane ręcznie (+ ewentualny dodatek) albo wyliczone; "–", gdy brakuje któregoś z pól `wymagane`."""
     brak = "OR(" + ",".join(f"ISBLANK({w})" for w in wymagane) + ")"
-    return f'=IFERROR(IF(ISNUMBER({reczne}),{reczne},IF({brak},"–",{wyrazenie})),"–")'
+    wpisane = f"{reczne}+{dodatek}" if dodatek else reczne
+    return f'=IFERROR(IF(ISNUMBER({reczne}),{wpisane},IF({brak},"–",{wyrazenie})),"–")'
 
 
 U_SCIANA = u_lub_reczne("sciana_U_reczne",
@@ -86,10 +87,10 @@ U_STROP_PIWN = u_lub_reczne("piwn_strop_U_reczne",
 U_OKNA = u_lub_reczne("okna_U_reczne",
     "INDEX(bib_U_tab,MATCH(okna_rok,bib_progi_lat,1),MATCH(okna_typ,bib_U_naglowki,0))"
     '+IF(okna_material="Aluminium",dodatek_alu,0)',
-    ["okna_rok", "okna_typ"])
+    ["okna_rok", "okna_typ"], dodatek="dodatek_U_okna_drzwi")
 U_DRZWI = u_lub_reczne("drzwi_U_reczne",
     'INDEX(bib_U_tab,MATCH(drzwi_rok,bib_progi_lat,1),MATCH("drzwi",bib_U_naglowki,0))',
-    ["drzwi_rok"])
+    ["drzwi_rok"], dodatek="dodatek_U_okna_drzwi")
 
 
 # --- definicja szablonu -----------------------------------------------------
@@ -217,7 +218,7 @@ POLA: list[Pole | Sekcja] = [
     Pole("okna_typ", "Typ szyb", "list", lista="okna_typ"),
     Pole("okna_material", "Materiał ram", "list", lista="okna_material"),
     Pole("okna_rok", "Rok montażu okien", "int", zakres=(1900, 2100), format="0"),
-    Pole("okna_U_reczne", "U wpisane ręcznie (opcjonalnie)", "num", "W/m²K", zakres=(0.5, 6)),
+    Pole("okna_U_reczne", "U wpisane ręcznie (opcjonalnie)", "num", "W/m²K", zakres=(0.5, 6), podpowiedz="Wartość katalogowa Uw/Ud — program doda +0,3 W/m²K na osadzenie (konfiguracja: dodatek_U_okna_drzwi)"),
     Pole("okna_U", "U okien", "calc", "W/m²K", formula=U_OKNA),
     Pole("okna_pow", "Łączna powierzchnia okien", "calc", "m²", format="0.0",
          formula='=IFERROR(okna_male*pow_okna_male+okna_srednie*pow_okna_srednie'
@@ -225,11 +226,11 @@ POLA: list[Pole | Sekcja] = [
 
     Sekcja("F. Drzwi zewnętrzne (3I)"),
     Pole("drzwi_ilosc", "Ilość", "int", "szt.", zakres=(0, 10), format="0"),
-    Pole("drzwi_szer", "Szerokość", "num", "m", zakres=(0.6, 3), format="0.00"),
-    Pole("drzwi_wys", "Wysokość", "num", "m", zakres=(1.8, 3), format="0.00"),
+    Pole("drzwi_szer", "Szerokość", "num", "m", zakres=(0.6, 3), domyslna_z="drzwi_szer", format="0.00"),
+    Pole("drzwi_wys", "Wysokość", "num", "m", zakres=(1.8, 3), domyslna_z="drzwi_wys", format="0.00"),
     Pole("drzwi_material", "Materiał", "list", lista="drzwi_material"),
     Pole("drzwi_rok", "Rok montażu", "int", zakres=(1900, 2100), format="0"),
-    Pole("drzwi_U_reczne", "U wpisane ręcznie (opcjonalnie)", "num", "W/m²K", zakres=(0.5, 6)),
+    Pole("drzwi_U_reczne", "U wpisane ręcznie (opcjonalnie)", "num", "W/m²K", zakres=(0.5, 6), podpowiedz="Wartość katalogowa Uw/Ud — program doda +0,3 W/m²K na osadzenie (konfiguracja: dodatek_U_okna_drzwi)"),
     Pole("drzwi_U", "U drzwi", "calc", "W/m²K", formula=U_DRZWI),
     Pole("drzwi_pow", "Łączna powierzchnia drzwi", "calc", "m²", format="0.0",
          formula='=IFERROR(drzwi_ilosc*drzwi_szer*drzwi_wys,"–")'),

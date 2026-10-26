@@ -33,7 +33,8 @@ def test_prosty_budynek_recznie():
     dU = N["delta_U_tb"]
     t = 0.33
     sciany = 36 * (2.5 + CFG["geometria"]["grubosc_stropu"]) - 6.0 - 2.0
-    phi_przegrody = (sciany * (0.3 + dU) + 6.0 * (1.5 + dU) + 2.0 * (2.0 + dU) + 80 * (0.2 + dU)) * dT
+    dok = N["dodatek_U_okna_drzwi"]  # U okien/drzwi wpisane ręcznie = katalogowe → + dodatek na osadzenie
+    phi_przegrody = (sciany * (0.3 + dU) + 6.0 * (1.5 + dok + dU) + 2.0 * (2.0 + dok + dU) + 80 * (0.2 + dU)) * dT
 
     a, p = (10 - 2 * t) * (8 - 2 * t), 2 * (10 - 2 * t + 8 - 2 * t)
     u_eq = grunt.u_plyty_na_gruncie(a / (0.5 * p), t, 0.3)
@@ -94,3 +95,9 @@ def test_protokol_24(tmp_path: Path):
     assert 10 < w.phi_HL_kW < 18
     assert any("różni się od deklarowanej" in o for o in w.ostrzezenia)
     assert any("Wysokość ścianki kolankowej" in z for z in w.zalozenia)
+
+
+def test_wskazniki_na_tej_samej_podstawie_co_obliczenia():
+    w = oblicz(prosty_budynek(pow_ogrz_dekl=100.0))
+    assert w.pow_ogrzewana == 100.0 and w.kubatura == w.wentylacja["V"]
+    assert f"{w.phi_HL / 100:.0f} W/m²" in "\n".join(w.kroki)

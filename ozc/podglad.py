@@ -8,6 +8,7 @@ import pypdfium2 as pdfium
 from PIL import Image, ImageDraw
 
 from .dane import Miejsce
+from .pdf import BLOKADA_PDF
 
 SKALA_RENDERU = 2.0          # ok. 144 dpi — czytelne pismo odręczne
 MARGINES = 0.06              # kontekst wokół wskazanego prostokąta (ułamek strony)
@@ -19,25 +20,28 @@ def strony(pliki: list[tuple[str, bytes]]) -> list[Image.Image]:
     obrazy: list[Image.Image] = []
     for nazwa, zawartosc in pliki:
         if Path(nazwa).suffix.lower() == ".pdf":
-            pdf = pdfium.PdfDocument(zawartosc)
-            obrazy.extend(pdf[i].render(scale=SKALA_RENDERU).to_pil().convert("RGB") for i in range(len(pdf)))
+            with BLOKADA_PDF:
+                pdf = pdfium.PdfDocument(zawartosc)
+                obrazy.extend(pdf[i].render(scale=SKALA_RENDERU).to_pil().convert("RGB") for i in range(len(pdf)))
         else:
             obrazy.append(Image.open(io.BytesIO(zawartosc)).convert("RGB"))
     return obrazy
 
 
 def liczba_stron(pliki: list[tuple[str, bytes]]) -> int:
-    return sum(len(pdfium.PdfDocument(z)) if Path(n).suffix.lower() == ".pdf" else 1 for n, z in pliki)
+    with BLOKADA_PDF:
+        return sum(len(pdfium.PdfDocument(z)) if Path(n).suffix.lower() == ".pdf" else 1 for n, z in pliki)
 
 
 def jedna_strona(pliki: list[tuple[str, bytes]], nr: int) -> Image.Image | None:
     """Strona nr (od 1) w numeracji AI — renderowana tylko ta jedna."""
     for nazwa, zawartosc in pliki:
         if Path(nazwa).suffix.lower() == ".pdf":
-            pdf = pdfium.PdfDocument(zawartosc)
-            if nr <= len(pdf):
-                return pdf[nr - 1].render(scale=SKALA_RENDERU).to_pil().convert("RGB")
-            nr -= len(pdf)
+            with BLOKADA_PDF:
+                pdf = pdfium.PdfDocument(zawartosc)
+                if nr <= len(pdf):
+                    return pdf[nr - 1].render(scale=SKALA_RENDERU).to_pil().convert("RGB")
+                nr -= len(pdf)
         else:
             if nr == 1:
                 return Image.open(io.BytesIO(zawartosc)).convert("RGB")

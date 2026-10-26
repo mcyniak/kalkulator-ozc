@@ -96,6 +96,10 @@ def arkusz_biblioteka(wb: Workbook, cfg: dict) -> None:
             ws.cell(w, 1, k).font = Font(name=FONT)
             ws.cell(w, 2, v).font = Font(name=FONT)
             nazwij(wb, k, "Biblioteka", f"$B${w}")
+    w += 1
+    ws.cell(w, 1, "dodatek_U_okna_drzwi").font = Font(name=FONT)
+    ws.cell(w, 2, cfg["norma"].get("dodatek_U_okna_drzwi", 0.0)).font = Font(name=FONT)
+    nazwij(wb, "dodatek_U_okna_drzwi", "Biblioteka", f"$B${w}")
 
     for kol, szer in zip("ABCDE", (32, 12, 12, 12, 70)):
         ws.column_dimensions[kol].width = szer

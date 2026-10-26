@@ -15,6 +15,7 @@ from openpyxl.styles import Font
 
 from ozc import __version__, klucz_api, ustawienia
 from ozc.ai_odczyt import MODEL, BladOdczytu, Pytanie, odczytaj_audyt
+from ozc.import_flexipower import importuj, rozpoznaj
 from ozc.dane import BladDanych, Dane, Miejsce, normalizuj, opcje_listy, uzupelnij_domyslne, wczytaj_xlsx
 from ozc.konfiguracja import KATALOG_DANYCH, wczytaj_konfiguracje
 from ozc.obliczenia import etykieta_z_sekcja, oblicz, pola_do_uzupelnienia, zalozenia_kluczowe
@@ -24,7 +25,7 @@ from ozc.raport import lista_adresow, raport_dla_folderu, zapisz_adres
 
 KATALOG_ADRESOW = KATALOG_DANYCH / "adresy"
 ZRODLO_CZLOWIEK = "uzupełnione przez człowieka"
-NIEPEWNE_AI = {"protokół – odczyt niepewny", "AI – do sprawdzenia"}
+NIEPEWNE_AI = {"protokół – odczyt niepewny", "AI – do sprawdzenia", "wyliczone z audytu"}
 NIEPEWNE = NIEPEWNE_AI | {"założenie domyślne"}
 OBRAZY = (".jpg", ".jpeg", ".png", ".webp")
 ROWNOLEGLE_ODCZYTY = 4
@@ -51,8 +52,13 @@ def grupuj_pliki(pliki) -> list[tuple[str, list[tuple[str, bytes]]]]:
     return audyty
 
 
-def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]]) -> dict:
-    """Odczyt jednego audytu — wywoływany w wątku, bez funkcji Streamlit."""
+def komputerowy(nazwa: str, pliki: list[tuple[str, bytes]]) -> bool:
+    """Komputerowy audyt FlexiPower (PDF z warstwą tekstu) — czytany wprost, bez AI."""
+    return len(pliki) == 1 and nazwa.lower().endswith(".pdf") and rozpoznaj(pliki[0][1])
+
+
+def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = None) -> dict:
+    """Odczyt jednego audytu — wywoływany w wątku, bez funkcji Streamlit. komp: wynik komputerowy(), jeśli znany."""
     audyt = {"id": hashlib.sha1(b"".join(z for _, z in pliki)).hexdigest()[:12], "nazwa": nazwa, "pliki": pliki,
              "dane": None, "pytania": [], "podsumowanie": "", "wynik": None, "blad": None, "zapisano": None}
     try:
@@ -60,7 +66,9 @@ def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]]) -> dict:
             dane, problemy = normalizuj(wczytaj_xlsx(io.BytesIO(pliki[0][1])))
             audyt.update(dane=uzupelnij_domyslne(dane), pytania=[Pytanie(p) for p in problemy], pliki=[])
         else:
-            w = odczytaj_audyt(pliki)
+            if komp is None:
+                komp = komputerowy(nazwa, pliki)
+            w = importuj(pliki[0][1]) if komp else odczytaj_audyt(pliki)
             audyt.update(dane=w.dane, pytania=w.pytania, podsumowanie=w.podsumowanie)
     except BladOdczytu as e:
         audyt["blad"] = f"Błąd odczytu: {e}"
@@ -71,16 +79,20 @@ def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]]) -> dict:
 
 def wczytaj_partie(pliki) -> None:
     grupy = grupuj_pliki(pliki)
-    if any(not n.lower().endswith(".xlsx") for n, _ in grupy) and not klucz_api.aktywny_klucz():
-        st.error("Brak klucza API — wpisz go w zakładce „Ustawienia”. Bez klucza można wczytać tylko pliki Excel.")
+    komp = [komputerowy(n, p) for n, p in grupy]  # rozpoznanie raz — szybkie, bez sieci
+    przez_ai = [n for (n, _), k in zip(grupy, komp) if not n.lower().endswith(".xlsx") and not k]
+    if przez_ai and not klucz_api.aktywny_klucz():
+        st.error("Brak klucza API — wpisz go w zakładce „Ustawienia”. Bez klucza można wczytać tylko komputerowe "
+                 f"audyty FlexiPower i pliki Excel (do odczytu przez AI: {', '.join(przez_ai[:5])}).")
         return
-    postep = st.progress(0.0, text=f"Claude czyta audyty: 0 z {len(grupy)} (każdy ok. 1–3 min)…")
+    opis = "Claude czyta audyty (każdy ok. 1–3 min)" if przez_ai else "Wczytuję audyty"
+    postep = st.progress(0.0, text=f"{opis}: 0 z {len(grupy)}…")
     wyniki: list[dict | None] = [None] * len(grupy)
     with ThreadPoolExecutor(max_workers=ROWNOLEGLE_ODCZYTY) as pula:
-        zadania = {pula.submit(odczytaj, n, p): i for i, (n, p) in enumerate(grupy)}
+        zadania = {pula.submit(odczytaj, n, p, komp[i]): i for i, (n, p) in enumerate(grupy)}
         for gotowe, z in enumerate(as_completed(zadania), start=1):
             wyniki[zadania[z]] = z.result()
-            postep.progress(gotowe / len(grupy), text=f"Claude czyta audyty: {gotowe} z {len(grupy)}…")
+            postep.progress(gotowe / len(grupy), text=f"{opis}: {gotowe} z {len(grupy)}…")
     postep.empty()
     for a in wyniki:
         if a["dane"] is not None:
@@ -146,7 +158,7 @@ def pokaz_miejsce(a: dict, miejsce: Miejsce | None, kolumna) -> None:
         kolumna.caption("Dane wczytane z Excela — brak skanu do podglądu.")
         return
     if not miejsce:
-        kolumna.caption("AI nie wskazało miejsca w dokumencie — zajrzyj do podglądu całego dokumentu niżej.")
+        kolumna.caption("Brak wskazanego miejsca w dokumencie — zajrzyj do podglądu całego dokumentu niżej.")
         return
     strona = _strona(a["id"], miejsce.strona, a["pliki"])
     if strona is None:
@@ -194,8 +206,8 @@ def sekcja_do_recznego(a: dict, prefiks: str, braki: list[str], niepewne: list[s
     wpisane: dict[str, str] = {}
     kluczowe = zalozenia_kluczowe(a["dane"])
     for tytul, klucze, opis in (
-            ("✍ Do uzupełnienia", braki, "Tych danych zabrakło w audycie albo AI ich nie odczytało — wpisz je."),
-            ("👁 Do potwierdzenia", niepewne, "AI odczytało te wartości niepewnie — porównaj z wycinkiem i popraw.")):
+            ("✍ Do uzupełnienia", braki, "Tych danych zabrakło w audycie albo nie udało się ich odczytać — wpisz je."),
+            ("👁 Do potwierdzenia", niepewne, "Te wartości są odczytane niepewnie albo wyliczone z założeniem — porównaj z wycinkiem i popraw.")):
         if not klucze:
             continue
         st.subheader(tytul)
@@ -207,7 +219,7 @@ def sekcja_do_recznego(a: dict, prefiks: str, braki: list[str], niepewne: list[s
                 etykieta = etykieta_z_sekcja(k) + (f" [{p.jednostka}]" if p.jednostka else "")
                 wpisane[k] = widget(p, a["dane"], prefiks, lewa, etykieta)
                 if a["dane"].uwagi.get(k):
-                    lewa.caption(f"Uwaga AI: {a['dane'].uwagi[k]}")
+                    lewa.caption(a["dane"].uwagi[k])
                 if k in kluczowe:
                     lewa.caption(f"⚠ Audyt nie podaje izolacji. Puste pole = przyjmę {kluczowe[k]:g} cm wełny mineralnej "
                                  "(bez ocieplenia ten strop/dach dawałby kilka kW strat więcej).")
@@ -325,14 +337,14 @@ def strona_audyty() -> None:
     if not audyty:
         return
 
-    st.markdown("**2.** Wyniki odczytu. Otwórz audyt poniżej — uzupełnij i potwierdź to, czego AI nie było pewne.")
+    st.markdown("**2.** Wyniki odczytu. Otwórz audyt poniżej — uzupełnij i potwierdź to, czego nie dało się pewnie odczytać.")
     tabela = pd.DataFrame([{
-        "Plik": a["nazwa"],
-        "Adres": a["dane"].get("adres") if a["dane"] else "—",
-        "OZC [kW]": round(a["wynik"].phi_HL_kW, 2) if a["wynik"] else None,
+        "Adres": (a["dane"].get("adres") if a["dane"] else None) or "—",
+        "OZC [kW]": f"{a['wynik'].phi_HL_kW:.2f}".replace(".", ",") if a["wynik"] else "—",
         "Status": status(a),
+        "Plik": a["nazwa"],
     } for a in audyty])
-    st.dataframe(tabela, hide_index=True, width="content")
+    st.dataframe(tabela, hide_index=True, width="stretch")
 
     gotowe = [a for a in audyty if status(a) == "✔ gotowe"]
     c1, c2 = st.columns(2)

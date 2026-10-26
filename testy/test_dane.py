@@ -43,3 +43,12 @@ def test_excel_tam_i_z_powrotem(tmp_path: Path):
     assert d.zrodla["strefa"] == "AI – do sprawdzenia"
     assert d.uwagi["h_parter"] == "sprawdzić"
     assert d.zrodla["t_int"] == "założenie domyślne"
+
+
+def test_szablon_dolicza_dodatek_do_wpisanego_u_okien():
+    """Excel liczy U okien/drzwi tak samo jak program: wpisane Uw/Ud + dodatek na osadzenie."""
+    wb = zbuduj_skoroszyt()
+    assert "dodatek_U_okna_drzwi" in wb.defined_names
+    formuly = [c.value for r in wb["Dane"].iter_rows() for c in r if isinstance(c.value, str)]
+    assert any("okna_U_reczne+dodatek_U_okna_drzwi" in f for f in formuly)
+    assert any("drzwi_U_reczne+dodatek_U_okna_drzwi" in f for f in formuly)

@@ -136,7 +136,6 @@ def _tabela_klucz_wartosc(doc: Document, wiersze: list[tuple[str, str]], pogrubi
 def utworz_docx(dane: Dane, w: Wynik, sciezka: Path, kiedy: datetime) -> Path:
     cfg = wczytaj_konfiguracje()
     n = cfg["norma"]
-    geo = w.geometria
     doc = Document()
     normalny = doc.styles["Normal"]
     normalny.font.name = CZCIONKA
@@ -173,8 +172,8 @@ def utworz_docx(dane: Dane, w: Wynik, sciezka: Path, kiedy: datetime) -> Path:
     if w.wentylacja["eta"]:
         wentylacja += f" (η = {w.wentylacja['eta']:.0%})"
     _tabela_klucz_wartosc(doc, [
-        ("Powierzchnia ogrzewana:", f"{liczba(geo.pow_ogrzewana)} m²"),
-        ("Kubatura:", f"{liczba(geo.kubatura)} m³"),
+        ("Powierzchnia ogrzewana:", f"{liczba(w.pow_ogrzewana)} m²"),
+        ("Kubatura:", f"{liczba(w.kubatura)} m³"),
         ("Strefa klimatyczna:", f"Strefa {dane.get('strefa')} (θe = {liczba(w.theta_e)}°C, "
                                 f"θm,e = {liczba(w.theta_me, 1)}°C)"),
         ("Rok budowy:", str(dane.get("rok_budowy") or "—")),
@@ -208,8 +207,8 @@ def utworz_docx(dane: Dane, w: Wynik, sciezka: Path, kiedy: datetime) -> Path:
 
     doc.add_heading("PODSTAWOWE WYNIKI OBLICZEŃ BUDYNKU", level=1)
     _tabela_klucz_wartosc(doc, [
-        ("Wskaźnik ΦHL odniesiony do kubatury (ΦHL/V):", f"{liczba(w.phi_HL / geo.kubatura, 2)} W/m³"),
-        ("Wskaźnik ΦHL odniesiony do powierzchni (ΦHL/A):", f"{liczba(w.phi_HL / geo.pow_ogrzewana, 2)} W/m²"),
+        ("Wskaźnik ΦHL odniesiony do kubatury (ΦHL/V):", f"{liczba(w.phi_HL / w.kubatura, 2)} W/m³"),
+        ("Wskaźnik ΦHL odniesiony do powierzchni (ΦHL/A):", f"{liczba(w.phi_HL / w.pow_ogrzewana, 2)} W/m²"),
         ("Projektowe obciążenie cieplne budynku ΦHL:", f"{w.phi_HL:.0f} W  /  {liczba(w.phi_HL_kW, 2)} kW"),
     ])
 

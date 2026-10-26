@@ -213,6 +213,34 @@ uwagi = "[SZACUNEK] deski + podsufitka; izolacja między belkami"
 
 
 # -----------------------------------------------------------------------------
+# Warstwy z komputerowych audytów FlexiPower („Ustalenia montażowe pompy ciepła”): nazwa → λ [W/mK]
+# Źródło: PN-EN ISO 10456 / typowe wartości katalogowe [SZACUNEK]; „Żelbet” wg opisu w audycie (λ 1,70).
+# Warstwy pomijane: podsypka z piasku (to grunt), „Inne”. Warstwa „—” ≥ 5 cm w stropie/podłodze = izolacja.
+# -----------------------------------------------------------------------------
+[warstwy_audytu]
+"Styropian" = 0.040
+"Wełna mineralna" = 0.040
+"Wełna skalna" = 0.040
+"Pianka PUR" = 0.030
+"Pianka PIR" = 0.023
+"Tynk cementowo-wapienny" = 0.82
+"Płyta gipsowo-kartonowa" = 0.25
+"Cegła dziurawka" = 0.62
+"Cegła pełna" = 0.77
+"Bloczek betonowy" = 1.30
+"Bloczek fundamentowy" = 1.30
+"Bloczki z betonu komórkowego" = 0.25
+"Pustak ceramiczny" = 0.30
+"Beton" = 1.70
+"Żelbet (U = 1,70 W/(m·K))" = 1.70
+"Wylewka betonowa" = 1.70
+"Wylewka z betonu chudego" = 1.70
+"Podłoga (terakota)" = 1.05
+"Drewno" = 0.16
+"Hydroizolacja" = 0.20
+
+
+# -----------------------------------------------------------------------------
 # Typowe U okien i drzwi wg roku montażu [W/m²K]                       [SZACUNEK]
 # Wiersz obowiązuje od roku z "progi_lat" do następnego progu.
 # Podstawa: wymagania WT dla okien/drzwi w danym okresie
@@ -239,6 +267,8 @@ pow_okna_male = 0.8           # [SZACUNEK] wg przykładów z protokołu: 0,8×1,
 pow_okna_srednie = 1.8        # [SZACUNEK] wg przykładów z protokołu: 1,2×1,5 / 1,8×1,0
 pow_okna_duze = 2.8           # [SZACUNEK] wg przykładów z protokołu: 1,5×1,8 / 2,4×1,2
 pow_okna_dachowe = 0.9        # [SZACUNEK] typowe okno dachowe 78×118
+drzwi_szer = 0.9              # [SZACUNEK] typowe drzwi wejściowe 90×200 (gdy audyt nie podaje wymiarów)
+drzwi_wys = 2.0
 typ_zabudowy = "Wolnostojący"
 liczba_pieter = 0
 kalenica = "Wzdłuż dłuższego boku"
@@ -256,6 +286,11 @@ izolacja_stropu_brak_cm = 5.0
 # Parametry metody obliczeń — PN-EN 12831:2006 (+ NA), PN-EN ISO 13370
 # -----------------------------------------------------------------------------
 [norma]
+# [KALIBRACJA] Dodatek do U okien i drzwi WPISANEGO z audytu / ręcznie (wartości katalogowe Uw/Ud
+# nie obejmują strat na osadzeniu). Na 47 budynkach względem Audytora OZC i 63 względem starych raportów
+# zmniejsza odsetek za małych pomp z 24% do 17–21% przy tej samej zgodności doboru.
+dodatek_U_okna_drzwi = 0.3   # [W/m²K]
+
 # Mostki cieplne — metoda uproszczona U_kc = U_k + ΔU_tb.
 # Stosowane do wszystkich przegród poza gruntem i ścianami do sąsiada.
 delta_U_tb = 0.05            # [DO WERYFIKACJI] wartość z NA nieustalona; typowo 0,02–0,15
@@ -269,10 +304,11 @@ lambda_grunt = 2.0           # [PEWNE] PN-EN ISO 13370: grunt nieznany (glina/i�
 # odczytu z tablic D.x normy 12831 — tablice są z tych wzorów wyprowadzone.   [DO WERYFIKACJI]
 
 # Wentylacja (PN-EN 12831 p. 7.2, załącznik D)
-n_min = 0.7                  # [KALIBRACJA] krotność wymian [1/h] dla całego budynku. Programy normowe liczą
-                             # wentylację pomieszczeniami (PN-83/B-03430); 91 obliczeń KAN OZC 7.0 (Szczerców)
-                             # daje medianę 0,71 1/h. Przy 0,7 wyniki na 60 audytach Ślesina: mediana 1,00
-                             # względem dotychczasowych raportów (przy 0,5: 0,90).
+n_min = 0.6                  # [KALIBRACJA] krotność wymian [1/h] dla całego budynku. Wzorce: KAN OZC 7.0
+                             # (91 budynków, Szczerców) mediana 0,71 1/h; Audytor/Purmo OZC (55, Strzałkowo) 0,54.
+                             # Pełna ścieżka programu (import audytu → obliczenie), 39 budynków vs Audytor −18 °C
+                             # i 48 vs dotychczasowe raporty: przy 0,6 dobór pompy ±1 model w 85% / 90%
+                             # (przy 0,7: 79% / 85%; przy 0,5: 85% / 90%, ale więcej za małych pomp).
 wsp_infiltracji_budynek = 0.5  # [DO WERYFIKACJI] na poziomie budynku infiltracja liczona z połową sumy pomieszczeń
 epsilon_do_10m = 1.0         # [PEWNE] współczynnik wysokości ε dla budynku do 10 m
 epsilon_10_30m = 1.2         # [PEWNE]
@@ -307,7 +343,9 @@ theta_sasiad = 15.0          # [DO WERYFIKACJI] temperatura w ogrzewanym budynku
 grubosc_stropu = 0.30        # [SZACUNEK] strop międzykondygnacyjny z warstwami [m]
 grubosc_sciany_domyslna = 0.45  # [SZACUNEK] gdy brak danych o ścianie [m]
 piwnica_nad_terenem = 0.5    # [SZACUNEK] wysokość ściany piwnicy ponad terenem [m]
-rozbieznosc_powierzchni = 0.20  # ostrzeżenie, gdy pow. z obrysu różni się od deklarowanej o więcej
+rozbieznosc_powierzchni = 0.20  # notatka, gdy pow. z obrysu różni się od deklarowanej o więcej
+rozbieznosc_ostrzezenie = 0.50  # ostrzeżenie (rażący błąd wymiarów/kondygnacji); mniejsze różnice zwykle =
+                                # nieogrzewana część bryły, a wentylacja i tak liczona jest z pow. deklarowanej
 # [KALIBRACJA] Kubatura do wentylacji z powierzchni ogrzewanej z audytu (wysokość z geometrii).
 # Wymiary ścian elewacyjnych obejmują często garaż, ganek, poddasze nieużytkowe — kubatura z nich zawyżała
 # wentylację 2–3×. Na 63 audytach Ślesina: dobór pompy różny o ≥2 rozmiary w 6% adresów (bez tego: 29%).
@@ -321,6 +359,10 @@ kubatura_z_deklaracji = true
 [kontrola]
 godziny_pelnej_mocy = [1600, 2400]  # zakres równoważnych godzin pracy z mocą projektową w roku
 cwu_kWh_na_osobe = 1000             # roczne ciepło użytkowe na c.w.u. na osobę
+# Kontrole wiarygodności (ostrzeżenia). Zakresy z 91 obliczeń KAN OZC i 55 Audytora OZC (P10–P90 z zapasem).
+U_sciany_max = 1.0                  # [W/m²K] wyżej = ściana praktycznie bez ocieplenia
+udzial_okien = [0.06, 0.35]         # powierzchnia okien / powierzchnia ogrzewana
+W_na_m2 = [35, 130]                 # wynik na m² powierzchni ogrzewanej
 
 [kontrola.paliwa."Węgiel"]
 energia_kWh = { "t/rok" = 7000 }
@@ -385,4 +427,4 @@ oslonienie    = ["Brak", "Średnie", "Dobre"]
 paliwo        = ["Węgiel", "Ekogroszek", "Drewno", "Pellet", "Paliwo stałe (nieokreślone)", "Gaz ziemny", "Olej", "Prąd", "Inne"]
 jednostka     = ["t/rok", "mp/rok", "m3/rok", "l/rok", "kWh/rok"]
 instalacja    = ["Grzejnikowa", "Płaszczyznowa", "Mieszana"]
-zrodlo        = ["protokół", "protokół – odczyt niepewny", "założenie domyślne", "uzupełnione przez człowieka", "AI – do sprawdzenia"]
+zrodlo        = ["protokół", "protokół – odczyt niepewny", "przeliczone z audytu", "wyliczone z audytu", "założenie domyślne", "uzupełnione przez człowieka", "AI – do sprawdzenia"]
