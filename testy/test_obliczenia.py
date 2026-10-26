@@ -50,6 +50,14 @@ def test_prosty_budynek_recznie():
     assert sum(w.rozbicie().values()) == pytest.approx(w.phi_HL)
 
 
+def test_kubatura_wentylacji_z_powierzchni_deklarowanej():
+    pelna = oblicz(prosty_budynek())
+    pol = oblicz(prosty_budynek(pow_ogrz_dekl=pelna.geometria.pow_ogrzewana / 2))
+    assert pol.wentylacja["V"] == pytest.approx(pelna.geometria.kubatura / 2)
+    assert pol.phi_V == pytest.approx(pelna.phi_V / 2)
+    assert pol.phi_T == pytest.approx(pelna.phi_T)  # przegrody nadal z wymiarów
+
+
 def test_odzysk_ciepla_zmniejsza_wentylacje():
     grawitacja = oblicz(prosty_budynek())
     odzysk = oblicz(prosty_budynek(wentylacja="Mechaniczna z odzyskiem", sprawnosc_odzysku=80.0))

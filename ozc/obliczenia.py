@@ -348,6 +348,13 @@ def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
 
     # --- wentylacja ---
     V = geo.kubatura
+    dekl = d.get("pow_ogrz_dekl")
+    if cfg["geometria"].get("kubatura_z_deklaracji") and dekl and geo.pow_ogrzewana:
+        # Wymiary ścian obejmują często części nieogrzewane (garaż, ganek, poddasze nieużytkowe) —
+        # wentylowana jest tylko powierzchnia ogrzewana z audytu, przy wysokości wynikającej z geometrii.
+        V = geo.kubatura * dekl / geo.pow_ogrzewana
+        kroki += ["", f"Kubatura wentylowana z powierzchni deklarowanej: {geo.kubatura:.0f} m³ × {dekl:g} / "
+                      f"{geo.pow_ogrzewana:.0f} m² = {V:.0f} m³"]
     n50 = n["n50"][d.get("szczelnosc")]
     e_osl = n["e_oslonienie"][d.get("oslonienie")]
     eps = (n["epsilon_do_10m"] if geo.wysokosc <= 10 else

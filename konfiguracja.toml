@@ -308,6 +308,10 @@ grubosc_stropu = 0.30        # [SZACUNEK] strop międzykondygnacyjny z warstwami
 grubosc_sciany_domyslna = 0.45  # [SZACUNEK] gdy brak danych o ścianie [m]
 piwnica_nad_terenem = 0.5    # [SZACUNEK] wysokość ściany piwnicy ponad terenem [m]
 rozbieznosc_powierzchni = 0.20  # ostrzeżenie, gdy pow. z obrysu różni się od deklarowanej o więcej
+# [KALIBRACJA] Kubatura do wentylacji z powierzchni ogrzewanej z audytu (wysokość z geometrii).
+# Wymiary ścian elewacyjnych obejmują często garaż, ganek, poddasze nieużytkowe — kubatura z nich zawyżała
+# wentylację 2–3×. Na 63 audytach Ślesina: dobór pompy różny o ≥2 rozmiary w 6% adresów (bez tego: 29%).
+kubatura_z_deklaracji = true
 
 
 # -----------------------------------------------------------------------------
