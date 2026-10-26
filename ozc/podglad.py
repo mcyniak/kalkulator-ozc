@@ -28,6 +28,23 @@ def strony(pliki: list[tuple[str, bytes]]) -> list[Image.Image]:
     return obrazy
 
 
+def miniatury(pliki: list[tuple[str, bytes]], szerokosc: int = 700) -> list[Image.Image]:
+    """Wszystkie strony w małej rozdzielczości (do wyboru stron z danymi) — numeracja jak w strony()."""
+    obrazy: list[Image.Image] = []
+    for nazwa, zawartosc in pliki:
+        if Path(nazwa).suffix.lower() == ".pdf":
+            with BLOKADA_PDF:
+                pdf = pdfium.PdfDocument(zawartosc)
+                for i in range(len(pdf)):
+                    strona = pdf[i]
+                    obrazy.append(strona.render(scale=szerokosc / strona.get_width()).to_pil().convert("RGB"))
+        else:
+            obraz = Image.open(io.BytesIO(zawartosc)).convert("RGB")
+            obraz.thumbnail((szerokosc, szerokosc * 2))
+            obrazy.append(obraz)
+    return obrazy
+
+
 def liczba_stron(pliki: list[tuple[str, bytes]]) -> int:
     with BLOKADA_PDF:
         return sum(len(pdfium.PdfDocument(z)) if Path(n).suffix.lower() == ".pdf" else 1 for n, z in pliki)

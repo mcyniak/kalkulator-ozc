@@ -91,3 +91,76 @@ def test_katalog_pol_w_promptcie():
     assert "`h_kolanka`" in SYSTEM and "`sciana_material_2`" in SYSTEM and "`wlasciciel`" in SYSTEM
     assert "t_int" not in SCHEMAT["properties"]["pola"]["items"]["properties"]["klucz"]["enum"]
     assert "t_int" in ai_odczyt.POMIJANE
+
+
+# --- wybór stron z danymi budynku ------------------------------------------------------------
+
+def _pdf(stron: int) -> bytes:
+    import io
+
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument.new()
+    for i in range(stron):
+        pdf.new_page(595 + i, 842)  # różne szerokości — po przycięciu widać, które strony zostały
+    bufor = io.BytesIO()
+    pdf.save(bufor)
+    return bufor.getvalue()
+
+
+def _szerokosci(zawartosc: bytes) -> list[int]:
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(zawartosc)
+    return [round(pdf[i].get_width()) for i in range(len(pdf))]
+
+
+class KlientZeStronami(SztucznyKlient):
+    """Tani model wskazuje strony (messages.create), główny czyta audyt (beta.messages.create)."""
+
+    def __init__(self, strony, tekst):
+        super().__init__(tekst)
+        self.wybor = []
+
+        def create(**kw):
+            self.wybor.append(kw)
+            return SimpleNamespace(stop_reason="end_turn",
+                                   content=[SimpleNamespace(type="text", text=json.dumps({"strony": strony}))])
+
+        self.messages = SimpleNamespace(create=create)
+
+
+def test_przytnij_zostawia_wybrane_strony_pdf_i_zdjecia():
+    pliki = [("a.pdf", _pdf(4)), ("zdj.jpg", b"jpg")]
+    wynik = ai_odczyt.przytnij(pliki, [2, 4, 5])
+    assert [n for n, _ in wynik] == ["a.pdf", "zdj.jpg"]
+    assert _szerokosci(wynik[0][1]) == [596, 598]
+
+
+def test_odczyt_tylko_wybranych_stron_z_oryginalnymi_numerami():
+    odp = dict(ODPOWIEDZ, pytania=[{"tekst": "Okna?", "klucze": ["okna_srednie"], "strona": 2,
+                                    "obszar": [500, 600, 990, 950]}])
+    klient = KlientZeStronami([1, 3], json.dumps(odp))
+    w = odczytaj_audyt([("a.pdf", _pdf(5))], client=klient)
+    assert klient.wybor[0]["model"] == ai_odczyt.MODEL_STRON
+    wyslany = klient.wywolania[0]["messages"][0]["content"][0]["source"]["data"]
+    import base64
+    assert _szerokosci(base64.b64decode(wyslany)) == [595, 597]       # do odczytu poszły tylko strony 1 i 3
+    assert w.dane.miejsca["strefa"].strona == 1
+    okna = next(p for p in w.pytania if p.tekst == "Okna?")
+    assert okna.miejsce.strona == 3  # strona 2 wysłanego dokumentu = strona 3 oryginału
+    assert "Odczytano strony 1, 3" in w.podsumowanie
+
+
+@pytest.mark.parametrize("strony", [[], [1, 2, 3, 4, 5], "zepsute"])
+def test_bez_sensownego_wyboru_czytamy_wszystkie_strony(strony):
+    klient = KlientZeStronami(strony, json.dumps(ODPOWIEDZ))
+    w = odczytaj_audyt([("a.pdf", _pdf(5))], client=klient)
+    import base64
+    wyslany = klient.wywolania[0]["messages"][0]["content"][0]["source"]["data"]
+    assert len(_szerokosci(base64.b64decode(wyslany))) == 5
+    assert "Odczytano strony" not in w.podsumowanie
+
+
+def test_krotkiego_dokumentu_nie_przycinamy():
+    klient = KlientZeStronami([1], json.dumps(ODPOWIEDZ))
+    odczytaj_audyt([("a.pdf", _pdf(2))], client=klient)
+    assert klient.wybor == []

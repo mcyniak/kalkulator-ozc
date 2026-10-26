@@ -5,16 +5,22 @@ Klucz API: zakładka Ustawienia albo zmienna środowiskowa ANTHROPIC_API_KEY (ni
 from __future__ import annotations
 
 import base64
+import io
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import anthropic
+import pypdfium2 as pdfium
 
 from .dane import Dane, Miejsce, normalizuj_wartosc, opcje_listy, uzupelnij_domyslne
+from .pdf import BLOKADA_PDF
+from .podglad import miniatury
 from .pola import POLA, POLA_WEJSCIOWE, Sekcja
 
 MODEL = "claude-opus-5-5"
+MODEL_STRON = "claude-haiku-5-5"  # tani model tylko do wskazania stron z danymi budynku
+MIN_STRON_DO_WYBORU = 3
 ZRODLA_AI = ["protokół", "protokół – odczyt niepewny", "AI – do sprawdzenia"]
 POMIJANE = {"t_int"}  # wartość normowa, nie z protokołu
 TYPY_PLIKOW = {
@@ -241,18 +247,94 @@ def zapytaj_claude(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic |
         raise BladOdczytu("Model zwrócił odpowiedź w nieoczekiwanym formacie.") from None
 
 
-def _miejsce(element: dict) -> Miejsce | None:
-    """Miejsce z odpowiedzi modelu; None, gdy model go nie wskazał albo prostokąt jest niepoprawny."""
+# ---------------------------------------------------------------------------
+# Wybór stron: do odczytu idą tylko strony z danymi budynku (taniej)
+# ---------------------------------------------------------------------------
+
+PYTANIE_STRONY = """To strony audytu budynku mieszkalnego przed montażem pompy ciepła (skan, zdjęcia albo wydruk).
+Wskaż numery stron zawierających dane potrzebne do obliczenia obciążenia cieplnego budynku: dane ogólne budynku,
+kondygnacje, ściany, stropy, dach, podłoga, okna i drzwi, szkic lub wymiary obrysu i elewacji, źródło ciepła
+i zużycie paliwa. Pomiń strony zawierające wyłącznie: oświadczenia, zgody na przetwarzanie danych, podpisy,
+protokół konieczności dostosowania obiektu, szkic samej kotłowni, zdjęcia bez danych. W razie wątpliwości stronę
+wskaż — pominięcie potrzebnej strony jest gorsze niż wysłanie zbędnej."""
+
+SCHEMAT_STRON = {
+    "type": "object",
+    "properties": {"strony": {"type": "array", "items": {"type": "integer"}}},
+    "required": ["strony"],
+    "additionalProperties": False,
+}
+
+
+def _jpeg_b64(obraz) -> str:
+    bufor = io.BytesIO()
+    obraz.save(bufor, format="JPEG", quality=70)
+    return base64.standard_b64encode(bufor.getvalue()).decode("ascii")
+
+
+def wybierz_strony(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic) -> list[int] | None:
+    """Numery stron (od 1, numeracja jak w podglądzie) z danymi budynku; None = czytamy wszystkie strony."""
+    try:
+        obrazy = miniatury(pliki)
+        if len(obrazy) < MIN_STRON_DO_WYBORU:
+            return None
+        tresc: list[dict] = []
+        for nr, obraz in enumerate(obrazy, start=1):
+            tresc += [{"type": "text", "text": f"Strona {nr}:"},
+                      {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                   "data": _jpeg_b64(obraz)}}]
+        tresc.append({"type": "text", "text": PYTANIE_STRONY})
+        odp = client.messages.create(
+            model=MODEL_STRON, max_tokens=500, thinking={"type": "disabled"},
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMAT_STRON}},
+            messages=[{"role": "user", "content": tresc}])
+        tekst = "".join(b.text for b in odp.content if b.type == "text")
+        wybrane = sorted({n for n in json.loads(tekst)["strony"] if 1 <= n <= len(obrazy)})
+    except Exception:  # noqa: BLE001 — wybór stron to tylko oszczędność; przy każdym problemie czytamy całość
+        return None
+    return wybrane if wybrane and len(wybrane) < len(obrazy) else None
+
+
+def przytnij(pliki: list[tuple[str, bytes]], wybrane: list[int]) -> list[tuple[str, bytes]]:
+    """Te same pliki, ale tylko z wybranymi stronami (PDF-y składane od nowa, zdjęcia pomijane w całości)."""
+    zostaw, wynik, nr = set(wybrane), [], 0
+    for nazwa, zawartosc in pliki:
+        if Path(nazwa).suffix.lower() == ".pdf":
+            with BLOKADA_PDF:
+                zrodlo = pdfium.PdfDocument(zawartosc)
+                n = len(zrodlo)
+                indeksy = [i for i in range(n) if nr + i + 1 in zostaw]
+                if indeksy:
+                    nowy = pdfium.PdfDocument.new()
+                    nowy.import_pages(zrodlo, indeksy)
+                    bufor = io.BytesIO()
+                    nowy.save(bufor)
+                    wynik.append((nazwa, bufor.getvalue()))
+            nr += n
+        else:
+            nr += 1
+            if nr in zostaw:
+                wynik.append((nazwa, zawartosc))
+    return wynik
+
+
+def _miejsce(element: dict, mapa_stron: list[int] | None = None) -> Miejsce | None:
+    """Miejsce z odpowiedzi modelu; None, gdy model go nie wskazał albo prostokąt jest niepoprawny.
+    mapa_stron: oryginalne numery stron wysłanych do modelu (gdy czytał tylko część dokumentu)."""
     strona, obszar = element.get("strona", 0), element.get("obszar") or []
     if strona < 1 or len(obszar) != 4:
         return None
+    if mapa_stron:
+        if strona > len(mapa_stron):
+            return None
+        strona = mapa_stron[strona - 1]
     x0, y0, x1, y1 = (max(0, min(1000, int(v))) for v in obszar)
     if x1 <= x0 or y1 <= y0:
         return None
     return Miejsce(strona, (x0, y0, x1, y1))
 
 
-def przetworz_odpowiedz(surowa: dict) -> WynikOdczytu:
+def przetworz_odpowiedz(surowa: dict, mapa_stron: list[int] | None = None) -> WynikOdczytu:
     """Zamienia odpowiedź modelu na Dane; nieprawidłowe wartości trafiają do pytań, nie do obliczeń."""
     dane = Dane()
     pytania: list[Pytanie] = []
@@ -260,7 +342,7 @@ def przetworz_odpowiedz(surowa: dict) -> WynikOdczytu:
         k = p["klucz"]
         if k not in POLA_WEJSCIOWE or k in POMIJANE:
             continue
-        miejsce = _miejsce(p)
+        miejsce = _miejsce(p, mapa_stron)
         if miejsce:
             dane.miejsca[k] = miejsce
         try:
@@ -272,9 +354,16 @@ def przetworz_odpowiedz(surowa: dict) -> WynikOdczytu:
         if p.get("uwaga"):
             dane.uwagi[k] = p["uwaga"]
     for p in surowa.get("pytania", []):
-        pytania.append(Pytanie(p["tekst"], [k for k in p.get("klucze", []) if k in POLA_WEJSCIOWE], _miejsce(p)))
+        pytania.append(Pytanie(p["tekst"], [k for k in p.get("klucze", []) if k in POLA_WEJSCIOWE],
+                               _miejsce(p, mapa_stron)))
     return WynikOdczytu(uzupelnij_domyslne(dane), pytania, surowa.get("podsumowanie", ""))
 
 
 def odczytaj_audyt(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None) -> WynikOdczytu:
-    return przetworz_odpowiedz(zapytaj_claude(pliki, client))
+    client = client or anthropic.Anthropic()
+    wybrane = wybierz_strony(pliki, client)
+    wynik = przetworz_odpowiedz(zapytaj_claude(przytnij(pliki, wybrane) if wybrane else pliki, client), wybrane)
+    if wybrane:
+        wynik.podsumowanie = (wynik.podsumowanie + f" Odczytano strony {', '.join(map(str, wybrane))} — "
+                              "pozostałe nie zawierały danych budynku.").strip()
+    return wynik
