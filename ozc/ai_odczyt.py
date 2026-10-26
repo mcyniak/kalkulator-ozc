@@ -18,8 +18,9 @@ from .pdf import BLOKADA_PDF
 from .podglad import miniatury
 from .pola import POLA, POLA_WEJSCIOWE, Sekcja
 
-MODEL = "claude-opus-5-5"
-MODEL_STRON = "claude-haiku-5-5"  # tani model tylko do wskazania stron z danymi budynku
+MODEL = "claude-haiku-5-5"          # domyślny odczyt: ok. 0,01 USD za audyt (krótki namysł)
+MODEL_DOKLADNY = "claude-opus-5-5"  # na żądanie, dla trudnych skanów: ok. 0,25 USD za audyt
+MODEL_STRON = MODEL                 # wskazanie stron z danymi budynku
 MIN_STRON_DO_WYBORU = 3
 ZRODLA_AI = ["protokół", "protokół – odczyt niepewny", "AI – do sprawdzenia"]
 POMIJANE = {"t_int"}  # wartość normowa, nie z protokołu
@@ -101,6 +102,9 @@ Zasady:
    czterech elewacji (pusta linia = 0 na tej elewacji, gdy na innych elewacjach są wpisy). „Inne (jakie?)” oraz
    drzwi balkonowe/tarasowe przypisz do kategorii wg opisanej wielkości (zwykle duże); gdy wielkości nie da się
    ustalić — pytanie. Gdy podano U okien (np. „Uw = 0,8–0,9”), wpisz `okna_U_reczne` (przy zakresie — górną wartość).
+   Gdy elewacje podają tylko powierzchnię okien w m² (np. „Elewacja A, powierzchnia okien: 3,6 m2”), nie zgaduj
+   sztuk z rysunków: zsumuj m² ze wszystkich elewacji i wpisz `okna_srednie` = zaokrąglona suma / 1,8,
+   źródło "AI – do sprawdzenia", w uwadze podaj sumę m² z każdej elewacji.
    Gdy wszystkie elewacje są puste lub przekreślone — pomiń pola okien i zadaj pytanie.
 7. Strefa klimatyczna: wyznacz z lokalizacji (gmina/powiat) wg mapy stref PN-EN 12831 (I–V),
    źródło "AI – do sprawdzenia", w uwadze podaj, z czego ją wyznaczyłeś.
@@ -211,25 +215,31 @@ def _blok_pliku(nazwa: str, zawartosc: bytes) -> dict:
                                     "data": base64.standard_b64encode(zawartosc).decode("ascii")}}
 
 
-def zapytaj_claude(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None) -> dict:
-    """Wysyła pliki audytu do Claude i zwraca surowy słownik zgodny ze SCHEMAT."""
+def zapytaj_claude(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None,
+                   dokladny: bool = False) -> dict:
+    """Wysyła pliki audytu do Claude i zwraca surowy słownik zgodny ze SCHEMAT.
+    dokladny=False: tani model z krótkim namysłem; True: najmocniejszy model (kilkadziesiąt razy droższy)."""
     client = client or anthropic.Anthropic()
     tresc = [_blok_pliku(n, z) for n, z in pliki]
     nazwy = ", ".join(Path(n).stem for n, _ in pliki)
     tresc.append({"type": "text", "text": "Odczytaj ten audyt i wypełnij pola zgodnie z zasadami. "
                   f"Nazwa pliku: „{nazwy}” — zwykle zawiera adres; gdy adres w dokumencie jest nieczytelny, "
                   "porównaj go z nazwą pliku (wtedy źródło \"AI – do sprawdzenia\")."})
+    wspolne = {"thinking": {"type": "adaptive"},
+               "system": [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+               "messages": [{"role": "user", "content": tresc}]}
     try:
-        odp = client.beta.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            thinking={"type": "adaptive"},
-            output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMAT}},
-            system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": tresc}],
-        )
+        if dokladny:
+            odp = client.beta.messages.create(
+                model=MODEL_DOKLADNY, max_tokens=16000,
+                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+                output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMAT}}, **wspolne)
+        else:  # tani model zużywa sporo tokenów na namysł — duży limit wymaga strumieniowania
+            with client.messages.stream(
+                    model=MODEL, max_tokens=32000,
+                    output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMAT}},
+                    **wspolne) as strumien:
+                odp = strumien.get_final_message()
     except anthropic.AuthenticationError:
         raise BladOdczytu("Nieprawidłowy klucz API — wpisz poprawny w zakładce Ustawienia.") from None
     except anthropic.RateLimitError:
@@ -364,10 +374,12 @@ def przetworz_odpowiedz(surowa: dict, mapa_stron: list[int] | None = None) -> Wy
     return WynikOdczytu(uzupelnij_domyslne(dane), pytania, surowa.get("podsumowanie", ""))
 
 
-def odczytaj_audyt(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None) -> WynikOdczytu:
+def odczytaj_audyt(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None,
+                   dokladny: bool = False) -> WynikOdczytu:
     client = client or anthropic.Anthropic()
     wybrane = wybierz_strony(pliki, client)
-    wynik = przetworz_odpowiedz(zapytaj_claude(przytnij(pliki, wybrane) if wybrane else pliki, client), wybrane)
+    wynik = przetworz_odpowiedz(
+        zapytaj_claude(przytnij(pliki, wybrane) if wybrane else pliki, client, dokladny), wybrane)
     if wybrane:
         wynik.podsumowanie = (wynik.podsumowanie + f" Odczytano strony {', '.join(map(str, wybrane))} — "
                               "pozostałe nie zawierały danych budynku.").strip()

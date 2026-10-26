@@ -31,7 +31,22 @@ class SztucznyKlient:
             self.wywolania.append(kw)
             return odp
 
-        self.beta = SimpleNamespace(messages=SimpleNamespace(create=create))
+        class Strumien:
+            def __init__(self, **kw):
+                self.kw = kw
+
+            def __enter__(self):
+                create(**self.kw)
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def get_final_message(self):
+                return odp
+
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=create))  # odczyt dokładny
+        self.messages = SimpleNamespace(stream=Strumien)                     # odczyt zwykły (tani model)
 
 
 def test_przetworz_odpowiedz():
@@ -69,7 +84,7 @@ def test_wywolanie_api_i_parsowanie():
     w = odczytaj_audyt([("audyt.pdf", b"%PDF-1.4")], client=klient)
     assert w.podsumowanie == "Dom parterowy z poddaszem."
     kw = klient.wywolania[0]
-    assert kw["model"] == "claude-opus-5-5"
+    assert kw["model"] == ai_odczyt.MODEL
     assert kw["output_config"]["format"]["schema"] is SCHEMAT
     blok = kw["messages"][0]["content"][0]
     assert blok["type"] == "document" and blok["source"]["media_type"] == "application/pdf"
@@ -125,7 +140,7 @@ class KlientZeStronami(SztucznyKlient):
             return SimpleNamespace(stop_reason="end_turn",
                                    content=[SimpleNamespace(type="text", text=json.dumps({"strony": strony}))])
 
-        self.messages = SimpleNamespace(create=create)
+        self.messages.create = create
 
 
 def test_przytnij_zostawia_wybrane_strony_pdf_i_zdjecia():
@@ -164,3 +179,10 @@ def test_krotkiego_dokumentu_nie_przycinamy():
     klient = KlientZeStronami([1], json.dumps(ODPOWIEDZ))
     odczytaj_audyt([("a.pdf", _pdf(2))], client=klient)
     assert klient.wybor == []
+
+
+def test_odczyt_dokladny_uzywa_mocniejszego_modelu():
+    klient = SztucznyKlient(json.dumps(ODPOWIEDZ))
+    odczytaj_audyt([("audyt.pdf", b"%PDF-1.4")], client=klient)
+    odczytaj_audyt([("audyt.pdf", b"%PDF-1.4")], client=klient, dokladny=True)
+    assert [k["model"] for k in klient.wywolania] == [ai_odczyt.MODEL, ai_odczyt.MODEL_DOKLADNY]

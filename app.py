@@ -98,7 +98,7 @@ def nieodczytany(nazwa: str, pliki: list[tuple[str, bytes]], blad: str | None = 
             "dane": None, "pytania": [], "podsumowanie": "", "wynik": None, "blad": blad, "zapisano": None}
 
 
-def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = None) -> dict:
+def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = None, dokladny: bool = False) -> dict:
     """Odczyt jednego audytu — wywoływany w wątku, bez funkcji Streamlit. komp: wynik komputerowy(), jeśli znany."""
     audyt = nieodczytany(nazwa, pliki)
     try:
@@ -108,8 +108,9 @@ def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = Non
         else:
             if komp is None:
                 komp = komputerowy(nazwa, pliki)
-            w = importuj(pliki[0][1]) if komp else odczytaj_audyt(pliki)
-            audyt.update(dane=w.dane, pytania=w.pytania, podsumowanie=w.podsumowanie)
+            w = importuj(pliki[0][1]) if komp else odczytaj_audyt(pliki, dokladny=dokladny)
+            audyt.update(dane=w.dane, pytania=w.pytania, podsumowanie=w.podsumowanie,
+                         przez_ai=not komp, dokladny=dokladny)
     except BladOdczytu as e:
         audyt["blad"] = f"Błąd odczytu: {e}"
     except Exception as e:  # noqa: BLE001 — jeden zły plik nie może zatrzymać całej partii
@@ -117,7 +118,15 @@ def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = Non
     return audyt
 
 
-def wczytaj_partie(pliki) -> None:
+def ustaw_strefe(a: dict, strefa: str | None) -> None:
+    """Strefa wybrana przez człowieka dla całej partii (jedna gmina = jedna strefa) — pewniejsza niż odczyt AI."""
+    if strefa and a["dane"] is not None:
+        a["dane"].wartosci["strefa"] = strefa
+        a["dane"].zrodla["strefa"] = ZRODLO_CZLOWIEK
+        a["dane"].uwagi["strefa"] = "Strefa wybrana dla całej partii"
+
+
+def wczytaj_partie(pliki, strefa: str | None = None) -> None:
     grupy = grupuj_pliki(pliki)
     komp = [komputerowy(n, p) for n, p in grupy]  # rozpoznanie raz — szybkie, bez sieci
     przez_ai = [not n.lower().endswith(".xlsx") and not k for (n, _), k in zip(grupy, komp)]
@@ -138,6 +147,7 @@ def wczytaj_partie(pliki) -> None:
             postep.progress(gotowe / len(do_odczytu), text=f"{opis}: {gotowe} z {len(do_odczytu)}…")
     postep.empty()
     for a in wyniki:
+        ustaw_strefe(a, strefa)
         if a["dane"] is not None:
             policz(a)
     ss.audyty = wyniki
@@ -360,6 +370,21 @@ def sprawdzanie(a: dict, i: int) -> None:
     if not braki and not niepewne:
         st.success("Wszystkie dane są odczytane albo potwierdzone.")
 
+    if a.get("przez_ai") and not a.get("dokladny") and not a["zapisano"]:
+        with st.expander("🔍 Odczyt wygląda źle? Przeczytaj dokładniej"):
+            st.caption("Dokładniejszy model czyta trudne pismo lepiej, ale kosztuje ok. 0,25 USD za audyt "
+                       "(zwykły odczyt ok. 0,01 USD) i trwa 1–2 minuty. Wpisane dotąd poprawki zostaną zastąpione.")
+            if st.button("Przeczytaj dokładniej", key=f"dokladniej_{i}"):
+                with st.spinner("Czytam dokładniejszym modelem…"):
+                    nowy = odczytaj(a["nazwa"], a["pliki"], komp=False, dokladny=True)
+                if nowy["dane"] is None:
+                    ss.blad_zatwierdzenia = nowy["blad"]
+                else:
+                    ustaw_strefe(nowy, ss.get("strefa_partii") or None)
+                    policz(nowy)
+                    ss.audyty[i] = nowy
+                    ss.wersja = ss.get("wersja", 0) + 1
+                st.rerun()
     if a["pliki"]:
         with st.expander("📄 Podgląd całego dokumentu"):
             n = liczba_stron(a["pliki"])
@@ -410,8 +435,14 @@ def strona_audyty() -> None:
         pliki = st.file_uploader("Pliki audytów", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
                                  accept_multiple_files=True, label_visibility="collapsed",
                                  key=f"wgrane_{ss.get('wersja', 0)}")
-        if pliki and st.button(f"📄 Odczytaj ({len(grupuj_pliki(pliki))})", type="primary"):
-            wczytaj_partie(pliki)
+        c1, c2 = st.columns([2, 3], vertical_alignment="bottom")
+        strefy = opcje_listy(POLA_WEJSCIOWE["strefa"])
+        strefa = c1.selectbox("Strefa klimatyczna dla całej partii", [""] + strefy,
+                              format_func=lambda s: s or "— odczytaj z audytów —", key="strefa_partii",
+                              help="Adresy z jednej gminy mają tę samą strefę — wybierz ją raz, zamiast "
+                                   "potwierdzać przy każdym audycie.")
+        if pliki and c2.button(f"📄 Odczytaj ({len(grupuj_pliki(pliki))})", type="primary"):
+            wczytaj_partie(pliki, strefa or None)
             st.rerun()
 
     audyty = ss.get("audyty")
@@ -596,7 +627,8 @@ def strona_ustawienia() -> None:
   lub poprawić i kliknąć „Zatwierdź i zapisz raport”.
 - Obliczenia: PN-EN 12831:2006 dla całego budynku; grunt wg PN-EN ISO 13370.
 - Raport OZC (Word + PDF) w układzie FlexiPower Group. PDF tworzy zainstalowany Word.
-- Koszt odczytu: ok. 0,1–0,3 USD za audyt.
+- Koszt odczytu skanu przez AI: ok. 0,01 USD za audyt (300 adresów ≈ 3 USD); dokładniejszy odczyt pojedynczego
+  trudnego skanu ok. 0,25 USD. Komputerowe audyty FlexiPower i pliki Excel — bez kosztów.
 """)
     st.caption(f"Wersja {__version__} · wyniki zapisują się w {KATALOG_ADRESOW}")
 
