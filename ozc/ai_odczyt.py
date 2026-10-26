@@ -105,8 +105,10 @@ Zasady:
 7. Strefa klimatyczna: wyznacz z lokalizacji (gmina/powiat) wg mapy stref PN-EN 12831 (I–V),
    źródło "AI – do sprawdzenia", w uwadze podaj, z czego ją wyznaczyłeś.
 8. Geometria:
-   - Szkic obrysu: wymiary zewnętrzne; dla prostokąta długość i szerokość. Kształt inny niż prostokąt —
-     „Inny (podaj pole i obwód)” i, gdy się da, pole zabudowy i obwód; opisz kształt w uwadze.
+   - Szkic obrysu: wymiary zewnętrzne; dla prostokąta długość i szerokość. Prostokąt z niewielkim uskokiem lub
+     wcięciem bez podanych wymiarów → „Prostokąt” z wymiarów głównych (źródło "AI – do sprawdzenia") i pytanie
+     o uskok. „Inny (podaj pole i obwód)” tylko dla kształtu wyraźnie innego (L, T, U) — wtedy, gdy się da,
+     pole zabudowy i obwód; opisz kształt w uwadze.
    - Ściany elewacyjne (szerokość, wysokość, wysokość szczytu): szerokości dwóch prostopadłych ścian to długość
      i szerokość budynku. Liczbę kondygnacji i ich wysokości wyznacz z wysokości ściany do okapu i powierzchni
      ogrzewanej (wysokość w świetle ≈ wysokość ściany na kondygnację − 0,3 m stropu); źródło "AI – do sprawdzenia".
@@ -213,7 +215,10 @@ def zapytaj_claude(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic |
     """Wysyła pliki audytu do Claude i zwraca surowy słownik zgodny ze SCHEMAT."""
     client = client or anthropic.Anthropic()
     tresc = [_blok_pliku(n, z) for n, z in pliki]
-    tresc.append({"type": "text", "text": "Odczytaj ten audyt i wypełnij pola zgodnie z zasadami."})
+    nazwy = ", ".join(Path(n).stem for n, _ in pliki)
+    tresc.append({"type": "text", "text": "Odczytaj ten audyt i wypełnij pola zgodnie z zasadami. "
+                  f"Nazwa pliku: „{nazwy}” — zwykle zawiera adres; gdy adres w dokumencie jest nieczytelny, "
+                  "porównaj go z nazwą pliku (wtedy źródło \"AI – do sprawdzenia\")."})
     try:
         odp = client.beta.messages.create(
             model=MODEL,
