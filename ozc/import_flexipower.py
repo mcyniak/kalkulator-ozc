@@ -19,7 +19,7 @@ from .pdf import BLOKADA_PDF
 ZRODLO_WPROST = "protokół"
 ZRODLO_WYLICZONE = "wyliczone z audytu"      # szacunek — do potwierdzenia przez człowieka
 ZRODLO_PRZELICZONE = "przeliczone z audytu"  # jednoznacznie przeliczone (np. U z warstw) — bez potwierdzania
-IZOLACJE = {"Styropian", "Wełna mineralna", "Wełna skalna", "Pianka PUR", "Pianka PIR"}
+IZOLACJE = {"Styropian", "Wełna mineralna", "Wełna skalna", "Wełna szklana", "Pianka PUR", "Pianka PIR"}
 POMIJANE = {"Podsypka z piasku", "Inne"}
 NIEZNANA = "—"
 WYS_KONDYGNACJI = 2.8  # [m] na kondygnację z biegiem stropu — do wyliczania liczby kondygnacji z wysokości ścian

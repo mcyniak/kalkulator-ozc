@@ -34,15 +34,6 @@ def raport_md(dane: Dane, w: Wynik) -> str:
     for nazwa, phi in sorted(rozb.items(), key=lambda kv: -kv[1]):
         linie.append(f"| {nazwa} | {phi / 1000:.2f} | {phi / w.phi_HL:.0%} |")
 
-    if w.dobor:
-        b = w.dobor
-        linie += ["", "## Dobór pompy (orientacyjnie)",
-                  f"- Φ_HL {b['phi_kW']:.2f} kW"
-                  + (f" × 24/(24 − {b['blokada_h']:g}) = {b['phi_z_blokadami_kW']:.2f} kW (blokady)" if b["blokada_h"] else ""),
-                  f"- + c.w.u. {b['cwu_kW']:.2f} kW = **{b['wymagana_kW']:.2f} kW**",
-                  f"- Najbliższa moc z typoszeregu: **{b['propozycja_kW'] or 'poza typoszeregiem'} kW**"
-                  + (f" (w protokole: {dane.get('moc_protokol'):g} kW)" if dane.get("moc_protokol") else ""),
-                  "- Uwaga: porównuj z mocą pompy przy θe i temperaturze zasilania instalacji, nie z mocą nominalną."]
     if w.ostrzezenia:
         linie += ["", "## ⚠ Do sprawdzenia", *[f"- {o}" for o in w.ostrzezenia]]
     if w.zalozenia:
@@ -103,7 +94,6 @@ def zapisz_adres(katalog: Path, dane: Dane, w: Wynik, oryginaly: list[tuple[str,
         "pow_ogrzewana_m2": round(w.pow_ogrzewana, 1),
         "kubatura_m3": round(w.kubatura, 1),
         "rozbicie_kW": {k: round(v / 1000, 3) for k, v in w.rozbicie().items()},
-        "propozycja_pompy_kW": (w.dobor or {}).get("propozycja_kW"),
         "moc_w_protokole_kW": dane.get("moc_protokol"),
         "liczba_ostrzezen": len(w.ostrzezenia),
         "ostrzezenia": w.ostrzezenia,

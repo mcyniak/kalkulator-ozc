@@ -63,10 +63,12 @@ def _katalog_pol() -> str:
 
 
 SYSTEM = f"""Odczytujesz audyty budynków mieszkalnych wykonane przed montażem pompy ciepła. Formaty bywają różne:
-odręcznie wypełniony formularz „Protokół uzgodnień montażowych” (skan z zaznaczonymi polami wyboru i szkicem)
-albo komputerowy wydruk „Ustalenia montażowe pompy ciepła” z tabelami, warstwami przegród i wymiarami ścian
-elewacyjnych. Strony ze zdjęciami z wizji, oświadczeniami i podpisami pomijaj.
-Dane posłużą do obliczenia projektowego obciążenia cieplnego budynku (PN-EN 12831) i doboru pompy ciepła.
+odręcznie wypełniony formularz „Protokół uzgodnień montażowych – powietrzna pompa ciepła” (skan z polami wyboru,
+szkicem obrysu i — w nowszych wersjach — tabelą „Typy i wielkości okien” z liczbą okien małych/średnich/dużych
+na każdej elewacji), starsze wersje tego formularza (okna opisane na szkicach elewacji) albo komputerowy wydruk
+„Ustalenia montażowe pompy ciepła” z tabelami, warstwami przegród i wymiarami ścian elewacyjnych.
+Strony ze zdjęciami z wizji, oświadczeniami, protokołem dostosowania obiektu i podpisami pomijaj.
+Dane posłużą do obliczenia projektowego obciążenia cieplnego budynku (PN-EN 12831).
 Błędna wartość podana jako pewna jest gorsza niż brak wartości — człowiek sprawdzi Twój odczyt przed obliczeniem.
 
 Zasady:
@@ -89,7 +91,11 @@ Zasady:
    brak tego elementu („Brak”/0, źródło "AI – do sprawdzenia"). Okien i drzwi NIE zeruj, gdy dokument ich
    po prostu nie wymienia — pomiń pola i zadaj pytanie.
 6. Okna: zsumuj liczby sztuk ze wszystkich elewacji osobno dla okien małych (≤1 m²), średnich (1–2 m²)
-   i dużych (>2 m²). Gdy podano U okien (np. „Uw = 0,8–0,9”), wpisz `okna_U_reczne` (przy zakresie — górną wartość).
+   i dużych (>2 m²). W tabeli „Typy i wielkości okien” dodaj „Okna małe/średnie/duże … szt.” ze wszystkich
+   czterech elewacji (pusta linia = 0 na tej elewacji, gdy na innych elewacjach są wpisy). „Inne (jakie?)” oraz
+   drzwi balkonowe/tarasowe przypisz do kategorii wg opisanej wielkości (zwykle duże); gdy wielkości nie da się
+   ustalić — pytanie. Gdy podano U okien (np. „Uw = 0,8–0,9”), wpisz `okna_U_reczne` (przy zakresie — górną wartość).
+   Gdy wszystkie elewacje są puste lub przekreślone — pomiń pola okien i zadaj pytanie.
 7. Strefa klimatyczna: wyznacz z lokalizacji (gmina/powiat) wg mapy stref PN-EN 12831 (I–V),
    źródło "AI – do sprawdzenia", w uwadze podaj, z czego ją wyznaczyłeś.
 8. Geometria:
@@ -108,7 +114,23 @@ Zasady:
    Warstwę opisaną „—” o grubości ≥ 5 cm w stropie/podłodze potraktuj jako izolację nieznanego rodzaju
    (`Wełna mineralna` lub `Styropian EPS`), źródło "AI – do sprawdzenia".
 10. Mapowanie pól formularza:
-   - „Strop nad ogrzewanymi pomieszczeniami” to strop wewnętrzny — pomiń.
+   - „Strop nad ogrzewanymi pomieszczeniami” = strop nad najwyższą ogrzewaną kondygnacją. Gdy wyżej jest
+     nieogrzewany strych albo nie zaznaczono poddasza użytkowego → pola `strop_*` (strop pod strychem).
+     Gdy wyżej jest ogrzewane poddasze użytkowe → to strop wewnętrzny, pomiń.
+   - „Strop nad nieogrzewanymi pomieszczeniami” = strop nad nieogrzewaną piwnicą (pola `piwn_strop_*`), gdy
+     zaznaczono piwnicę nieogrzewaną. Gdy z dokumentu wynika, że chodzi o strop pod nieogrzewanym strychem
+     (np. komputerowe „unheated ceiling”) → pola `strop_*`. Gdy nie da się ustalić — pytanie.
+   - „Ilość kondygnacji ogrzewanych”: „Parter, śr. wysokość” = `h_parter`; „Piętro, ilość, śr. wysokość” =
+     `liczba_pieter` i `h_pietra`; niezaznaczone piętro = `liczba_pieter` 0; „Piwnica ogrzewana/nieogrzewana”
+     = `piwnica` (+ `h_piwnicy`); „Strych ogrzewany/nieogrzewany” → `strych_nieogrzewany`.
+   - Szkic obrysu z wymiarami albo „Regularny: długość, szerokość” = `dl_budynku`/`szer_budynku`.
+   - „Drzwi garażowe”: wypełnione → `garaz` = "Tak – nieogrzewany" (źródło "AI – do sprawdzenia") i pytanie,
+     czy garaż jest w bryle budynku i czy jest ogrzewany; puste albo brak tej sekcji → pomiń (brak garażu).
+   - „Dotychczasowy sposób podgrzewania c.o.” → `paliwo_rodzaj` (kocioł na paliwo stałe bez wskazania paliwa =
+     „Paliwo stałe (nieokreślone)”, gaz/olej wg zaznaczenia). „Roczne zużycie obecnego paliwa” →
+     `paliwo_ilosc` i `paliwo_jednostka`. Gdy brak jednostki, przyjmij typową dla paliwa (gaz → m3/rok,
+     węgiel/ekogroszek/pellet → t/rok, olej → l/rok, drewno → mp/rok), źródło "AI – do sprawdzenia",
+     i zadaj pytanie o jednostkę.
    - „Dach – izolacja … grubość” = `dach_izolacja_grubosc`; materiał tylko gdy podany.
    - „Ściana fundamentowa” = pola `fund_*`; „Podłoga na gruncie” = pola `podloga_*`.
    - „Żądana temperatura w pomieszczeniach” = `temp_zadana` (to życzenie klienta, nie temperatura obliczeniowa).

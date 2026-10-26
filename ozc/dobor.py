@@ -1,4 +1,4 @@
-"""Orientacyjny dobór mocy pompy i kontrola wyniku przez roczne zużycie paliwa (poza normą)."""
+"""Kontrola wyniku przez roczne zużycie paliwa (poza normą)."""
 from __future__ import annotations
 
 from .dane import Dane
@@ -23,12 +23,3 @@ def kontrola_paliwa(d: Dane, phi_kW: float, cfg: dict) -> dict | None:
             "(część domu nieogrzewana? dodatkowe źródło ciepła?).")
     return wynik
 
-
-def dobor_pompy(phi_kW: float, liczba_osob: int | None, blokada_h: float, cfg: dict) -> dict:
-    c = cfg["dobor"]
-    phi_blok = phi_kW * 24 / (24 - blokada_h) if blokada_h else phi_kW
-    cwu = (liczba_osob or 0) * c["cwu_kW_na_osobe"]
-    wymagana = phi_blok + cwu
-    propozycja = next((m for m in c["typoszereg_kW"] if m >= wymagana), None)
-    return {"phi_kW": phi_kW, "blokada_h": blokada_h, "phi_z_blokadami_kW": phi_blok, "cwu_kW": cwu,
-            "wymagana_kW": wymagana, "propozycja_kW": propozycja}

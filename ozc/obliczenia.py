@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from . import grunt, przegrody
 from .dane import ZRODLO_DOMYSLNE, BladDanych, Dane
-from .dobor import dobor_pompy, kontrola_paliwa
+from .dobor import kontrola_paliwa
 from .geometria import Geometria, oblicz_geometrie
 from .konfiguracja import wczytaj_konfiguracje
 from .pola import POLA_WEJSCIOWE, SEKCJA_POLA
@@ -46,7 +46,6 @@ class Wynik:
     ostrzezenia: list[str] = field(default_factory=list)
     zalozenia: list[str] = field(default_factory=list)
     kontrola_paliwa: dict | None = None
-    dobor: dict | None = None
     pow_ogrzewana: float = 0.0            # [m²] podstawa wskaźników: deklarowana, a bez niej z obrysu
 
     @property
@@ -278,7 +277,7 @@ def kontrole_wiarygodnosci(d: Dane, U: dict, geo: Geometria, a_okien: float, phi
     return uwagi
 
 
-def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
+def oblicz(dane: Dane) -> Wynik:
     """Liczy Φ_HL. `dane` muszą być znormalizowane (ozc.dane.normalizuj)."""
     cfg = wczytaj_konfiguracje()
     n = cfg["norma"]
@@ -461,6 +460,4 @@ def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
     wynik.kontrola_paliwa = kontrola_paliwa(d, phi_HL / 1000, cfg)
     if wynik.kontrola_paliwa and wynik.kontrola_paliwa.get("ostrzezenie"):
         wynik.ostrzezenia.append(wynik.kontrola_paliwa["ostrzezenie"])
-    wynik.dobor = dobor_pompy(phi_HL / 1000, d.get("liczba_osob"),
-                              cfg["dobor"]["blokada_h"] if blokada_h is None else blokada_h, cfg)
     return wynik

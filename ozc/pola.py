@@ -242,7 +242,7 @@ POLA: list[Pole | Sekcja] = [
     Pole("szczelnosc", "Stopień szczelności (3B)", "list", lista="szczelnosc"),
     Pole("oslonienie", "Klasa osłonięcia (3C)", "list", lista="oslonienie"),
 
-    Sekcja("H. Kontrola i dane do doboru pompy (nie wpływa na Φ_HL)"),
+    Sekcja("H. Kontrola wyniku i informacje dodatkowe (nie wpływa na Φ_HL)"),
     Pole("paliwo_rodzaj", "Obecne paliwo", "list", lista="paliwo"),
     Pole("paliwo_ilosc", "Roczne zużycie paliwa", "num", zakres=(0, 100000), format="0.0"),
     Pole("paliwo_jednostka", "Jednostka zużycia", "list", lista="jednostka"),

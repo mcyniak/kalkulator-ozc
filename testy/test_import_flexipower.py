@@ -141,3 +141,10 @@ def test_po_wpisaniu_liczby_drzwi_wymiary_i_rok_sa_zakladane():
     d.wartosci.update(strefa="II", drzwi_ilosc=1)
     assert pola_do_uzupelnienia(d) == []
     assert any("Rok montażu" in z for z in oblicz(d).zalozenia)
+
+
+def test_welna_szklana_w_stropie_to_izolacja():
+    t = TEKST.replace("unheated ceiling:\n Warstwa 1: Żelbet (U = 1,70 W/(m·K)) — grubość 9 cm",
+                      "unheated ceiling:\n Warstwa 1: Drewno — grubość 2.5 cm\n Warstwa 2: Wełna szklana — grubość 30 cm")
+    d = interpretuj(parsuj_tekst(t)).dane
+    assert d.get("strop_U_reczne") == pytest.approx(1 / (0.1 + 0.04 + 0.025 / 0.16 + 0.30 / 0.040), abs=0.01)

@@ -221,9 +221,11 @@ uwagi = "[SZACUNEK] deski + podsufitka; izolacja między belkami"
 "Styropian" = 0.040
 "Wełna mineralna" = 0.040
 "Wełna skalna" = 0.040
+"Wełna szklana" = 0.040        # PN-EN ISO 10456 / karty producentów: 0,033–0,045
 "Pianka PUR" = 0.030
 "Pianka PIR" = 0.023
 "Tynk cementowo-wapienny" = 0.82
+"Tynk wapienny" = 0.70
 "Płyta gipsowo-kartonowa" = 0.25
 "Cegła dziurawka" = 0.62
 "Cegła pełna" = 0.77
@@ -395,15 +397,6 @@ sprawnosc = 0.88
 [kontrola.paliwa."Prąd"]
 energia_kWh = { "kWh/rok" = 1 }
 sprawnosc = 1.0
-
-
-# -----------------------------------------------------------------------------
-# Dobór pompy — orientacyjny, poza normą
-# -----------------------------------------------------------------------------
-[dobor]
-typoszereg_kW = [7, 9, 11, 13, 15, 17, 19, 21]   # moce z protokołu (pkt 1)
-cwu_kW_na_osobe = 0.25       # [SZACUNEK] dodatek mocy na c.w.u.
-blokada_h = 0                # domyślny czas blokad operatora [h/dobę]
 
 
 # -----------------------------------------------------------------------------

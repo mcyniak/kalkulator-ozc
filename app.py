@@ -29,6 +29,8 @@ NIEPEWNE_AI = {"protokół – odczyt niepewny", "AI – do sprawdzenia", "wylic
 NIEPEWNE = NIEPEWNE_AI | {"założenie domyślne"}
 OBRAZY = (".jpg", ".jpeg", ".png", ".webp")
 ROWNOLEGLE_ODCZYTY = 4
+BRAK_KLUCZA = ("Skan wymaga odczytu przez AI, a nie ma klucza API — wpisz go w zakładce „Ustawienia” "
+               "i wrzuć ten plik ponownie.")
 
 st.set_page_config(page_title="Kalkulator OZC", page_icon="🔥", layout="wide")
 ss = st.session_state
@@ -57,10 +59,14 @@ def komputerowy(nazwa: str, pliki: list[tuple[str, bytes]]) -> bool:
     return len(pliki) == 1 and nazwa.lower().endswith(".pdf") and rozpoznaj(pliki[0][1])
 
 
+def nieodczytany(nazwa: str, pliki: list[tuple[str, bytes]], blad: str | None = None) -> dict:
+    return {"id": hashlib.sha1(b"".join(z for _, z in pliki)).hexdigest()[:12], "nazwa": nazwa, "pliki": pliki,
+            "dane": None, "pytania": [], "podsumowanie": "", "wynik": None, "blad": blad, "zapisano": None}
+
+
 def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = None) -> dict:
     """Odczyt jednego audytu — wywoływany w wątku, bez funkcji Streamlit. komp: wynik komputerowy(), jeśli znany."""
-    audyt = {"id": hashlib.sha1(b"".join(z for _, z in pliki)).hexdigest()[:12], "nazwa": nazwa, "pliki": pliki,
-             "dane": None, "pytania": [], "podsumowanie": "", "wynik": None, "blad": None, "zapisano": None}
+    audyt = nieodczytany(nazwa, pliki)
     try:
         if nazwa.lower().endswith(".xlsx"):
             dane, problemy = normalizuj(wczytaj_xlsx(io.BytesIO(pliki[0][1])))
@@ -80,25 +86,30 @@ def odczytaj(nazwa: str, pliki: list[tuple[str, bytes]], komp: bool | None = Non
 def wczytaj_partie(pliki) -> None:
     grupy = grupuj_pliki(pliki)
     komp = [komputerowy(n, p) for n, p in grupy]  # rozpoznanie raz — szybkie, bez sieci
-    przez_ai = [n for (n, _), k in zip(grupy, komp) if not n.lower().endswith(".xlsx") and not k]
-    if przez_ai and not klucz_api.aktywny_klucz():
-        st.error("Brak klucza API — wpisz go w zakładce „Ustawienia”. Bez klucza można wczytać tylko komputerowe "
-                 f"audyty FlexiPower i pliki Excel (do odczytu przez AI: {', '.join(przez_ai[:5])}).")
-        return
-    opis = "Claude czyta audyty (każdy ok. 1–3 min)" if przez_ai else "Wczytuję audyty"
-    postep = st.progress(0.0, text=f"{opis}: 0 z {len(grupy)}…")
+    przez_ai = [not n.lower().endswith(".xlsx") and not k for (n, _), k in zip(grupy, komp)]
+    bez_klucza = any(przez_ai) and not klucz_api.aktywny_klucz()
     wyniki: list[dict | None] = [None] * len(grupy)
+    do_odczytu = []
+    for i, (n, p) in enumerate(grupy):
+        if bez_klucza and przez_ai[i]:  # skan bez klucza — reszta partii i tak się wczyta
+            wyniki[i] = nieodczytany(n, p, BRAK_KLUCZA)
+        else:
+            do_odczytu.append(i)
+    opis = "Czytam audyty (skan przez AI: ok. 1–3 min)" if any(przez_ai[i] for i in do_odczytu) else "Wczytuję audyty"
+    postep = st.progress(0.0, text=f"{opis}: 0 z {len(do_odczytu)}…")
     with ThreadPoolExecutor(max_workers=ROWNOLEGLE_ODCZYTY) as pula:
-        zadania = {pula.submit(odczytaj, n, p, komp[i]): i for i, (n, p) in enumerate(grupy)}
+        zadania = {pula.submit(odczytaj, grupy[i][0], grupy[i][1], komp[i]): i for i in do_odczytu}
         for gotowe, z in enumerate(as_completed(zadania), start=1):
             wyniki[zadania[z]] = z.result()
-            postep.progress(gotowe / len(grupy), text=f"{opis}: {gotowe} z {len(grupy)}…")
+            postep.progress(gotowe / len(do_odczytu), text=f"{opis}: {gotowe} z {len(do_odczytu)}…")
     postep.empty()
     for a in wyniki:
         if a["dane"] is not None:
             policz(a)
     ss.audyty = wyniki
     ss.wersja = ss.get("wersja", 0) + 1
+    pierwszy = nastepny(wyniki, -1)
+    ss.skok_do = pierwszy if pierwszy is not None else 0
 
 
 def policz(audyt: dict) -> None:
@@ -128,7 +139,7 @@ def status(a: dict) -> str:
     if a["zapisano"]:
         return "✅ zapisano"
     if a["dane"] is None:
-        return "❌ błąd odczytu"
+        return "🔑 potrzebny klucz API" if a["blad"] == BRAK_KLUCZA else "❌ błąd odczytu"
     braki, niepewne = do_recznego(a)
     if braki:
         return f"✍ uzupełnij {len(braki)}"
@@ -142,6 +153,20 @@ def status(a: dict) -> str:
 
 def zapisz(a: dict) -> None:
     a["zapisano"] = str(zapisz_adres(KATALOG_ADRESOW, a["dane"], a["wynik"], a["pliki"], a["pytania"]))
+
+
+def nastepny(audyty: list[dict], obecny: int) -> int | None:
+    """Indeks kolejnego niezapisanego, odczytanego audytu (po obecnym, z zawinięciem); None, gdy nie ma."""
+    n = len(audyty)
+    for k in range(1, n + 1):
+        j = (obecny + k) % n
+        if not audyty[j]["zapisano"] and audyty[j]["dane"] is not None:
+            return j
+    return None
+
+
+def nazwa_audytu(a: dict) -> str:
+    return (a["dane"].get("adres") if a["dane"] else None) or a["nazwa"]
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +217,8 @@ def widget(p: Pole, dane: Dane, prefiks: str, kolumna, etykieta: str | None = No
         opcje = [""] + opcje_listy(p)
         obecna = dane.get(k)
         return kolumna.selectbox(etykieta or p.etykieta, opcje, index=opcje.index(obecna) if obecna in opcje else 0,
-                                 key=f"{prefiks}_{k}", label_visibility=widoczna)
+                                 key=f"{prefiks}_{k}", label_visibility=widoczna, placeholder="Wybierz…",
+                                 format_func=lambda o: o or "— wybierz —")
     return kolumna.text_input(etykieta or p.etykieta, value=tekst(dane.get(k)), key=f"{prefiks}_{k}",
                               label_visibility=widoczna, help=p.podpowiedz or None)
 
@@ -304,16 +330,29 @@ def sprawdzanie(a: dict, i: int) -> None:
     with st.expander("Wszystkie dane audytu"):
         wpisane |= formularz(a["dane"], prefiks, pomin=set(braki) | set(niepewne))
 
+    st.caption("„Zatwierdź” przyjmuje wpisane wartości (i te do potwierdzenia), liczy OZC, zapisuje raport Word i PDF "
+               "i przechodzi do następnego audytu. „Przelicz” tylko pokazuje wynik po zmianach.")
     c1, c2 = st.columns(2)
-    if c1.button("🔄 Przelicz" + (" i potwierdź" if braki or niepewne else ""), key=f"przelicz_{i}",
-                 type="primary" if braki or niepewne else "secondary"):
+    if c1.button("✅ Zatwierdź i zapisz raport" if not a["zapisano"] else "✅ Zapisz ponownie",
+                 key=f"zatwierdz_{i}", type="primary"):
         zastosuj(a, wpisane, potwierdzone=set(niepewne))
-        st.rerun()
-    if a["wynik"] and not braki and not niepewne and not a["zapisano"]:
-        if c2.button("💾 Zapisz adres i utwórz raport", type="primary", key=f"zapisz_{i}"):
+        braki_po, _ = do_recznego(a)
+        if braki_po:
+            ss.blad_zatwierdzenia = "Nie zapisano — uzupełnij: " + ", ".join(etykieta_z_sekcja(k) for k in braki_po)
+        elif not a["wynik"]:
+            ss.blad_zatwierdzenia = f"Nie zapisano — {a['blad'] or 'nie udało się policzyć OZC'}"
+        else:
             with st.spinner("Tworzę raport Word i PDF…"):
                 zapisz(a)
-            st.rerun()
+            ss.komunikat = ("success", f"Zapisano: {nazwa_audytu(a)} — {a['wynik'].phi_HL_kW:.2f} kW.")
+            dalej = nastepny(ss.audyty, i)
+            ss.skok_do = dalej if dalej is not None else i
+        st.rerun()
+    if c2.button("🔄 Przelicz", key=f"przelicz_{i}"):
+        zastosuj(a, wpisane, potwierdzone=set())
+        st.rerun()
+    if "blad_zatwierdzenia" in ss:
+        st.error(ss.pop("blad_zatwierdzenia"))
     if a["zapisano"]:
         st.success("Zapisano — raport jest w zakładce „Lista adresów”.")
 
@@ -324,8 +363,10 @@ def sprawdzanie(a: dict, i: int) -> None:
 
 def strona_audyty() -> None:
     st.title("Audyty")
-    st.markdown("**1.** Wrzuć audyty — **każdy PDF to osobny adres** (można wiele naraz). "
-                "Zdjęcia stron jednego protokołu wrzuć razem w osobnej partii. Działa też wypełniony szablon Excel.")
+    st.markdown("**1.** Wrzuć audyty — **każdy PDF to osobny adres** (można wiele naraz). Działają wszystkie "
+                "formaty: komputerowe audyty FlexiPower (czytane od razu), skany i zdjęcia protokołów odręcznych — "
+                "stare i nowe wersje formularza (czyta je AI, potrzebny klucz w „Ustawieniach”) — oraz wypełniony "
+                "szablon Excel. Zdjęcia stron jednego protokołu wrzuć razem, w osobnej partii.")
     pliki = st.file_uploader("Pliki audytów", type=["pdf", "jpg", "jpeg", "png", "webp", "xlsx"],
                              accept_multiple_files=True, label_visibility="collapsed",
                              key=f"wgrane_{ss.get('wersja', 0)}")
@@ -337,9 +378,18 @@ def strona_audyty() -> None:
     if not audyty:
         return
 
-    st.markdown("**2.** Wyniki odczytu. Otwórz audyt poniżej — uzupełnij i potwierdź to, czego nie dało się pewnie odczytać.")
+    komunikat = ss.pop("komunikat", None)
+    if komunikat:
+        getattr(st, komunikat[0])(komunikat[1])
+    zapisane = sum(1 for a in audyty if a["zapisano"])
+    bledy = sum(1 for a in audyty if a["dane"] is None)
+    pozostale = len(audyty) - zapisane - bledy
+    st.markdown(f"**2.** Wyniki: **{zapisane}** zapisanych, **{pozostale}** do sprawdzenia"
+                + (f", **{bledy}** nieodczytanych" if bledy else "") + f" (razem {len(audyty)}).")
+    if pozostale == 0 and zapisane:
+        st.success("Wszystkie odczytane audyty są zapisane — raporty są w zakładce „Lista adresów”.")
     tabela = pd.DataFrame([{
-        "Adres": (a["dane"].get("adres") if a["dane"] else None) or "—",
+        "Adres": nazwa_audytu(a),
         "OZC [kW]": f"{a['wynik'].phi_HL_kW:.2f}".replace(".", ",") if a["wynik"] else "—",
         "Status": status(a),
         "Plik": a["nazwa"],
@@ -358,10 +408,13 @@ def strona_audyty() -> None:
         ss.wersja = ss.get("wersja", 0) + 1
         st.rerun()
 
-    st.markdown("**3.** Sprawdź audyt.")
-    etykiety = [f"{i + 1}. {a['nazwa']} — {status(a)}" for i, a in enumerate(audyty)]
-    i = st.selectbox("Audyt", range(len(audyty)), format_func=lambda j: etykiety[j], label_visibility="collapsed")
-    sprawdzanie(audyty[i], i)
+    st.markdown("**3.** Sprawdź audyt — po zatwierdzeniu program sam przejdzie do następnego.")
+    if "skok_do" in ss:
+        ss.wybrany_audyt = min(ss.pop("skok_do"), len(audyty) - 1)
+    etykiety = [f"{i + 1}. {nazwa_audytu(a)} — {status(a)}" for i, a in enumerate(audyty)]
+    i = st.selectbox("Audyt", range(len(audyty)), format_func=lambda j: etykiety[j], label_visibility="collapsed",
+                     key="wybrany_audyt")
+    sprawdzanie(audyty[min(i, len(audyty) - 1)], min(i, len(audyty) - 1))
 
 
 def _excel_z_linkami(adresy: list[dict]) -> bytes:
@@ -436,7 +489,8 @@ def strona_ustawienia() -> None:
     if aktywny:
         st.success(f"Klucz jest ustawiony: `{klucz_api.zamaskowany(aktywny)}` — odczyt PDF przez AI działa.")
     else:
-        st.warning("Brak klucza — odczyt PDF nie zadziała (pliki Excel tak).")
+        st.warning("Brak klucza — skany i zdjęcia protokołów nie zostaną odczytane. "
+                   "Komputerowe audyty FlexiPower i pliki Excel działają bez klucza.")
 
     with st.form("klucz", clear_on_submit=True):
         nowy = st.text_input("Nowy klucz", type="password", placeholder="sk-ant-...")
@@ -472,8 +526,10 @@ def strona_ustawienia() -> None:
 
     st.subheader("Jak to działa")
     st.markdown("""
-- AI odczytuje audyt i przy każdej wartości wskazuje miejsce w dokumencie. Czego nie odczytało albo nie było pewne,
-  program pokazuje w sekcji „Do uzupełnienia” razem z wycinkiem skanu — wystarczy wpisać lub potwierdzić.
+- Komputerowe audyty FlexiPower program czyta sam; skany protokołów odręcznych (stare i nowe wersje formularza)
+  czyta AI i przy każdej wartości wskazuje miejsce w dokumencie. Czego nie odczytano albo co jest szacunkiem,
+  program pokazuje w sekcji „Do uzupełnienia / Do potwierdzenia” z wycinkiem dokumentu — wystarczy wpisać
+  lub poprawić i kliknąć „Zatwierdź i zapisz raport”.
 - Obliczenia: PN-EN 12831:2006 dla całego budynku; grunt wg PN-EN ISO 13370.
 - Raport OZC (Word + PDF) w układzie FlexiPower Group. PDF tworzy zainstalowany Word.
 - Koszt odczytu: ok. 0,1–0,3 USD za audyt.
@@ -484,7 +540,8 @@ def strona_ustawienia() -> None:
 strony = {"Audyty": strona_audyty, "Lista adresów": strona_lista, "Ustawienia": strona_ustawienia}
 wybrana = st.sidebar.radio("Menu", list(strony))
 if not klucz_api.aktywny_klucz():
-    st.sidebar.warning("Brak klucza API — wpisz go w „Ustawieniach”.")
+    st.sidebar.warning("Brak klucza API — wpisz go w „Ustawieniach”. Bez klucza działają komputerowe audyty "
+                       "FlexiPower i pliki Excel; skany wymagają klucza.")
 st.sidebar.divider()
 if st.sidebar.button("⏻ Zamknij program"):
     st.sidebar.info("Program zamknięty — możesz zamknąć tę kartę przeglądarki.")

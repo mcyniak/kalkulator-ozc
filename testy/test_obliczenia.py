@@ -78,13 +78,6 @@ def test_brak_U_przegrody_nie_daje_cichego_zera():
         oblicz(prosty_budynek(strop_U_reczne=None))
 
 
-def test_dobor_pompy_z_blokadami():
-    w = oblicz(prosty_budynek(liczba_osob=4), blokada_h=2)
-    b = w.dobor
-    assert b["phi_z_blokadami_kW"] == pytest.approx(w.phi_HL_kW * 24 / 22)
-    assert b["wymagana_kW"] == pytest.approx(b["phi_z_blokadami_kW"] + 4 * 0.25)
-
-
 def test_protokol_24(tmp_path: Path):
     przyklad = tomllib.loads((KATALOG_PROJEKTU / "przyklady" / "protokol_24.toml").read_text(encoding="utf-8"))
     plik = tmp_path / "p24.xlsx"
