@@ -6,14 +6,18 @@ import pytest
 
 from ozc import ai_odczyt
 from ozc.ai_odczyt import SCHEMAT, SYSTEM, BladOdczytu, odczytaj_audyt, przetworz_odpowiedz
+from ozc.dane import Miejsce
 
 ODPOWIEDZ = {
     "pola": [
-        {"klucz": "strefa", "wartosc": "II", "zrodlo": "AI – do sprawdzenia", "uwaga": "pow. łowicki"},
-        {"klucz": "h_parter", "wartosc": "2,6", "zrodlo": "protokół", "uwaga": ""},
-        {"klucz": "sciana_material", "wartosc": "Pustak żelbetowy", "zrodlo": "protokół – odczyt niepewny", "uwaga": ""},
+        {"klucz": "strefa", "wartosc": "II", "zrodlo": "AI – do sprawdzenia", "uwaga": "pow. łowicki",
+         "strona": 1, "obszar": [100, 80, 600, 120]},
+        {"klucz": "h_parter", "wartosc": "2,6", "zrodlo": "protokół", "uwaga": "",
+         "strona": 1, "obszar": [0, 0, 0, 0]},
+        {"klucz": "sciana_material", "wartosc": "Pustak żelbetowy", "zrodlo": "protokół – odczyt niepewny",
+         "uwaga": "", "strona": 1, "obszar": [50, 700, 500, 720]},
     ],
-    "pytania": ["Jaka jest wysokość ścianki kolankowej?"],
+    "pytania": [{"tekst": "Ile jest okien?", "klucze": ["okna_srednie"], "strona": 3, "obszar": [500, 600, 990, 950]}],
     "podsumowanie": "Dom parterowy z poddaszem.",
 }
 
@@ -33,10 +37,31 @@ class SztucznyKlient:
 def test_przetworz_odpowiedz():
     w = przetworz_odpowiedz(ODPOWIEDZ)
     assert w.dane.get("strefa") == "II" and w.dane.zrodla["strefa"] == "AI – do sprawdzenia"
+    assert w.dane.miejsca["strefa"] == Miejsce(1, (100, 80, 600, 120))
     assert w.dane.get("h_parter") == 2.6
-    assert w.dane.get("sciana_material") is None  # spoza listy → nie trafia do obliczeń…
-    assert any("Pustak żelbetowy" in p for p in w.pytania)  # …tylko do pytań
+    assert "h_parter" not in w.dane.miejsca  # [0,0,0,0] = miejsce nieznane
     assert w.dane.zrodla["h_kolanka"] == "założenie domyślne"
+
+
+def test_wartosc_spoza_listy_trafia_do_pytan_z_miejscem():
+    w = przetworz_odpowiedz(ODPOWIEDZ)
+    assert w.dane.get("sciana_material") is None
+    pyt = next(p for p in w.pytania if "Pustak żelbetowy" in p.tekst)
+    assert pyt.klucze == ["sciana_material"] and pyt.miejsce.strona == 1
+
+
+def test_pytania_z_kluczami_i_miejscem():
+    pyt = next(p for p in przetworz_odpowiedz(ODPOWIEDZ).pytania if p.tekst == "Ile jest okien?")
+    assert pyt.klucze == ["okna_srednie"] and pyt.miejsce == Miejsce(3, (500, 600, 990, 950))
+
+
+@pytest.mark.parametrize("strona, obszar", [(0, [1, 2, 3, 4]), (1, [5, 5, 5, 9]), (2, [1, 2, 3])])
+def test_niepoprawne_miejsce_jest_pomijane(strona, obszar):
+    assert ai_odczyt._miejsce({"strona": strona, "obszar": obszar}) is None
+
+
+def test_miejsce_przycinane_do_strony():
+    assert ai_odczyt._miejsce({"strona": 1, "obszar": [-20, 10, 1200, 50]}) == Miejsce(1, (0, 10, 1000, 50))
 
 
 def test_wywolanie_api_i_parsowanie():
@@ -63,6 +88,6 @@ def test_nieobslugiwany_plik():
 
 
 def test_katalog_pol_w_promptcie():
-    assert "`h_kolanka`" in SYSTEM and "Pustak keramzytobetonowy" in SYSTEM
+    assert "`h_kolanka`" in SYSTEM and "`sciana_material_2`" in SYSTEM and "`wlasciciel`" in SYSTEM
     assert "t_int" not in SCHEMAT["properties"]["pola"]["items"]["properties"]["klucz"]["enum"]
     assert "t_int" in ai_odczyt.POMIJANE

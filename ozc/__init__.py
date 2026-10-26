@@ -1,3 +1,3 @@
-"""Kalkulator projektowego obciążenia cieplnego budynku (PN-EN 12831:2006, cały budynek)."""
+﻿"""Kalkulator projektowego obciążenia cieplnego budynku (PN-EN 12831:2006, cały budynek)."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

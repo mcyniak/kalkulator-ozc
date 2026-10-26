@@ -59,6 +59,7 @@ def u_lub_reczne(reczne: str, wyrazenie: str, wymagane: list[str]) -> str:
 
 U_SCIANA = u_lub_reczne("sciana_U_reczne",
     "1/(Rsi_poziomy+Rse+R_tynki+" + r_muru("sciana_material", "sciana_grubosc") + "+"
+    + "IF(ISBLANK(sciana_material_2),0," + r_muru("sciana_material_2", "sciana_grubosc_2") + ")+"
     + r_izolacji("sciana_ocieplenie", "sciana_ocieplenie_grubosc") + ")",
     ["sciana_material", "sciana_grubosc", "sciana_ocieplenie"])
 U_FUND = u_lub_reczne("fund_U_reczne",
@@ -97,7 +98,8 @@ POLA: list[Pole | Sekcja] = [
     Sekcja("0. Identyfikacja"),
     Pole("nr_protokolu", "Nr protokołu", "text"),
     Pole("data_audytu", "Data audytu", "text", podpowiedz="RRRR-MM-DD"),
-    Pole("adres", "Adres / identyfikator", "text"),
+    Pole("adres", "Adres / identyfikator", "text", podpowiedz="Np. Lipowa 7, 00-001 Przykładowo — trafia do nazwy raportu"),
+    Pole("wlasciciel", "Właściciel", "text", podpowiedz="Imię i nazwisko — do raportu OZC"),
 
     Sekcja("A. Lokalizacja i komfort"),
     Pole("gmina", "Gmina / miejscowość", "text"),
@@ -147,6 +149,9 @@ POLA: list[Pole | Sekcja] = [
     Sekcja("D1. Ściana zewnętrzna (3D)"),
     Pole("sciana_material", "Materiał konstrukcyjny", "list", lista="lst_mat_konstr"),
     Pole("sciana_grubosc", "Grubość muru", "num", "cm", zakres=(5, 100), format="0"),
+    Pole("sciana_material_2", "Druga warstwa muru (opcjonalnie)", "list", lista="lst_mat_konstr",
+         podpowiedz="Np. ściana z cegły + bloczka — druga warstwa konstrukcyjna"),
+    Pole("sciana_grubosc_2", "Grubość drugiej warstwy", "num", "cm", zakres=(1, 60), format="0"),
     Pole("sciana_ocieplenie", "Ocieplenie", "list", lista="lst_mat_izol"),
     Pole("sciana_ocieplenie_grubosc", "Grubość ocieplenia", "num", "cm", zakres=(0, 40), format="0"),
     Pole("sciana_U_reczne", "U wpisane ręcznie (opcjonalnie)", "num", "W/m²K",
@@ -251,3 +256,16 @@ POLA: list[Pole | Sekcja] = [
 
 
 POLA_WEJSCIOWE: dict[str, Pole] = {p.klucz: p for p in POLA if isinstance(p, Pole) and p.rodzaj != "calc"}
+
+
+def _sekcje_pol() -> dict[str, str]:
+    wynik, biezaca = {}, ""
+    for p in POLA:
+        if isinstance(p, Sekcja):
+            biezaca = p.tytul.split(" (")[0]
+        else:
+            wynik[p.klucz] = biezaca
+    return wynik
+
+
+SEKCJA_POLA: dict[str, str] = _sekcje_pol()

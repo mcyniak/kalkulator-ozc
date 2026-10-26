@@ -21,14 +21,25 @@ class BladDanych(ValueError):
 
 
 @dataclass
+class Miejsce:
+    """Miejsce w dokumencie audytu: strona (od 1) i prostokąt [x0, y0, x1, y1] w skali 0–1000 strony."""
+    strona: int
+    obszar: tuple[int, int, int, int]
+
+
+@dataclass
 class Dane:
     wartosci: dict = field(default_factory=dict)
     zrodla: dict = field(default_factory=dict)
     uwagi: dict = field(default_factory=dict)
+    miejsca: dict[str, Miejsce] = field(default_factory=dict)
 
     def get(self, klucz: str, domyslna=None):
         v = self.wartosci.get(klucz)
         return domyslna if v is None or v == "" else v
+
+    def kopia(self) -> "Dane":
+        return Dane(dict(self.wartosci), dict(self.zrodla), dict(self.uwagi), dict(self.miejsca))
 
     def jako_slownik(self) -> dict:
         return {"wartosci": dict(self.wartosci), "zrodla": dict(self.zrodla), "uwagi": dict(self.uwagi)}
@@ -85,7 +96,7 @@ def normalizuj_wartosc(pole: Pole, surowa):
 
 def normalizuj(dane: Dane) -> tuple[Dane, list[str]]:
     """Normalizuje wszystkie wartości; błędne pola zostają puste, a komunikaty wracają w liście."""
-    wynik = Dane(zrodla=dict(dane.zrodla), uwagi=dict(dane.uwagi))
+    wynik = Dane(zrodla=dict(dane.zrodla), uwagi=dict(dane.uwagi), miejsca=dict(dane.miejsca))
     problemy = []
     for klucz, surowa in dane.wartosci.items():
         pole = POLA_WEJSCIOWE.get(klucz)

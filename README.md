@@ -16,9 +16,13 @@ Odczyt PDF przez AI wymaga klucza API Anthropic — wpisz go raz w zakładce **U
 ## Praca z audytami
 1. **Audyty** → przeciągnij PDF-y (każdy PDF = osobny adres, można wiele naraz) → „Odczytaj”.
    Zdjęcia stron jednego protokołu wrzuca się razem w osobnej partii. Działa też wypełniony `szablony/szablon_OZC.xlsx`.
-2. Tabela pokazuje OZC i status każdego audytu. Otwórz audyt, sprawdź pola z ⚠, w razie zmian „Przelicz”.
-3. „Zapisz ten adres” albo „Zapisz wszystkie bez ostrzeżeń”.
-4. **Lista adresów** — tabela Adres | OZC [kW], eksport do Excela.
+2. Tabela pokazuje OZC i status każdego audytu. Otwórz audyt: sekcja **Do uzupełnienia / Do potwierdzenia**
+   pokazuje tylko pola, których AI nie odczytało albo nie było pewne — z wycinkiem skanu w tym miejscu.
+   Wpisz lub popraw wartości i kliknij „Przelicz i potwierdź”.
+3. „Zapisz adres i utwórz raport” (albo „Zapisz wszystkie gotowe”) — powstaje raport OZC w Wordzie i PDF
+   (`OZC_<adres>_<data>_<godzina>`) w układzie FlexiPower Group. PDF tworzy zainstalowany Word.
+4. **Lista adresów** — Adres | OZC [kW] | Word | PDF; eksport do Excela z linkami do raportów.
+   W **Ustawieniach** można wskazać dodatkowy folder na raporty (np. na Dysku współdzielonym).
 
 ## Pliki
 - `konfiguracja.toml` — wszystkie wartości normowe, biblioteka przegród, założenia domyślne (ze źródłami).

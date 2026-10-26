@@ -11,7 +11,7 @@ from .dane import ZRODLO_DOMYSLNE, BladDanych, Dane
 from .dobor import dobor_pompy, kontrola_paliwa
 from .geometria import Geometria, oblicz_geometrie
 from .konfiguracja import wczytaj_konfiguracje
-from .pola import POLA_WEJSCIOWE
+from .pola import POLA_WEJSCIOWE, SEKCJA_POLA
 
 
 @dataclass
@@ -71,24 +71,27 @@ def _etykieta(klucz: str) -> str:
     return POLA_WEJSCIOWE[klucz].etykieta
 
 
-def sprawdz_kompletnosc(d: Dane) -> list[str]:
-    """Lista brakujących pól niezbędnych do obliczeń (puste = można liczyć)."""
+def etykieta_z_sekcja(klucz: str) -> str:
+    return f"{POLA_WEJSCIOWE[klucz].etykieta} ({SEKCJA_POLA[klucz]})"
+
+
+def brakujace_pola(d: Dane) -> list[str]:
+    """Klucze pól niezbędnych do obliczeń, których brakuje (puste = można liczyć)."""
     braki: list[str] = []
 
-    def wymagaj(*klucze: str, sekcja: str = "") -> None:
+    def wymagaj(*klucze: str) -> None:
         for k in klucze:
-            if d.get(k) is None:
-                braki.append(f"{sekcja}{_etykieta(k)}")
+            if d.get(k) is None and k not in braki:
+                braki.append(k)
 
-    def przegroda(u_reczne: str, *klucze: str, izolacja: str | None = None, grubosc: str | None = None,
-                  sekcja: str = "") -> None:
+    def przegroda(u_reczne: str, *klucze: str, izolacja: str | None = None, grubosc: str | None = None) -> None:
         if d.get(u_reczne) is not None:
             return
-        wymagaj(*klucze, sekcja=sekcja)
+        wymagaj(*klucze)
         if izolacja:
-            wymagaj(izolacja, sekcja=sekcja)
+            wymagaj(izolacja)
             if d.get(izolacja) not in (None, "Brak", "Pustka powietrzna"):
-                wymagaj(grubosc, sekcja=sekcja)
+                wymagaj(grubosc)
 
     wymagaj("strefa", "t_int", "h_parter")
     if str(d.get("obrys", "Prostokąt")).startswith("Inny"):
@@ -96,27 +99,32 @@ def sprawdz_kompletnosc(d: Dane) -> list[str]:
     else:
         wymagaj("dl_budynku", "szer_budynku")
     przegroda("sciana_U_reczne", "sciana_material", "sciana_grubosc", izolacja="sciana_ocieplenie",
-              grubosc="sciana_ocieplenie_grubosc", sekcja="Ściana: ")
+              grubosc="sciana_ocieplenie_grubosc")
+    if d.get("sciana_material_2") and d.get("sciana_U_reczne") is None:
+        wymagaj("sciana_grubosc_2")
 
-    if sum(d.get(k, 0) for k in ("okna_male", "okna_srednie", "okna_duze", "okna_dachowe")) > 0:
-        if d.get("okna_U_reczne") is None:
-            wymagaj("okna_typ", "okna_rok", sekcja="Okna: ")
+    # Brak informacji o oknach to nie „zero okien” — trzeba zapytać.
+    okna = ("okna_male", "okna_srednie", "okna_duze", "okna_dachowe")
+    if all(d.get(k) is None for k in okna[:3]):
+        wymagaj(*okna[:3])
+    if sum(d.get(k, 0) for k in okna) > 0 and d.get("okna_U_reczne") is None:
+        wymagaj("okna_typ", "okna_rok")
+    wymagaj("drzwi_ilosc")
     if d.get("drzwi_ilosc", 0) > 0:
-        wymagaj("drzwi_szer", "drzwi_wys", sekcja="Drzwi: ")
+        wymagaj("drzwi_szer", "drzwi_wys")
         if d.get("drzwi_U_reczne") is None:
-            wymagaj("drzwi_rok", sekcja="Drzwi: ")
+            wymagaj("drzwi_rok")
 
     piwnica = d.get("piwnica", "Brak")
     if piwnica in ("Brak", "Ogrzewana"):
-        przegroda("podloga_U_reczne", izolacja="podloga_izolacja", grubosc="podloga_izolacja_grubosc",
-                  sekcja="Podłoga: ")
+        przegroda("podloga_U_reczne", izolacja="podloga_izolacja", grubosc="podloga_izolacja_grubosc")
     if piwnica == "Nieogrzewana":
         przegroda("piwn_strop_U_reczne", "piwn_strop_konstrukcja", izolacja="piwn_strop_izolacja",
-                  grubosc="piwn_strop_izolacja_grubosc", sekcja="Strop nad piwnicą: ")
+                  grubosc="piwn_strop_izolacja_grubosc")
     if piwnica == "Ogrzewana":
         wymagaj("h_piwnicy")
         przegroda("fund_U_reczne", "fund_material", "fund_grubosc", izolacja="fund_izolacja",
-                  grubosc="fund_izolacja_grubosc", sekcja="Ściana piwnicy: ")
+                  grubosc="fund_izolacja_grubosc")
     if d.get("liczba_pieter", 0) > 0:
         wymagaj("h_pietra")
 
@@ -126,11 +134,23 @@ def sprawdz_kompletnosc(d: Dane) -> list[str]:
         wymagaj("h_poddasza")
         if dach != "Płaski":
             wymagaj("kat_dachu")
-            przegroda("dach_U_reczne", izolacja="dach_izolacja", grubosc="dach_izolacja_grubosc", sekcja="Dach: ")
+            przegroda("dach_U_reczne", izolacja="dach_izolacja", grubosc="dach_izolacja_grubosc")
     if (poddasze and d.get("strych_nieogrzewany", "Tak") == "Tak") or not poddasze or dach == "Płaski":
         przegroda("strop_U_reczne", "strop_konstrukcja", izolacja="strop_izolacja",
-                  grubosc="strop_izolacja_grubosc", sekcja="Strop pod strychem / stropodach: ")
+                  grubosc="strop_izolacja_grubosc")
     return braki
+
+
+def sprawdz_kompletnosc(d: Dane) -> list[str]:
+    """Czytelne nazwy brakujących pól (puste = można liczyć)."""
+    return [etykieta_z_sekcja(k) for k in brakujace_pola(d)]
+
+
+def pola_do_uzupelnienia(dane: Dane) -> list[str]:
+    """Pola, które człowiek musi wpisać, zanim da się policzyć — po przyjęciu bezpiecznych założeń."""
+    d = dane.kopia()
+    _domysl_brakujace(d, [])
+    return brakujace_pola(d)
 
 
 def _domysl_brakujace(d: Dane, notatki: list[str]) -> None:
@@ -165,7 +185,7 @@ def wspolczynniki_U(d: Dane) -> dict[str, float]:
     if d.get("sciana_U_reczne") is not None or d.get("sciana_material"):
         U["sciana"] = _u(d, "sciana_U_reczne", lambda: przegrody.u_sciany(
             d.get("sciana_material"), d.get("sciana_grubosc"), d.get("sciana_ocieplenie"),
-            d.get("sciana_ocieplenie_grubosc")))
+            d.get("sciana_ocieplenie_grubosc"), d.get("sciana_material_2"), d.get("sciana_grubosc_2")))
     if d.get("fund_U_reczne") is not None or d.get("fund_material"):
         U["fund"] = _u(d, "fund_U_reczne", lambda: przegrody.u_sciany_fundamentowej(
             d.get("fund_material"), d.get("fund_grubosc"), d.get("fund_izolacja", "Brak"),
@@ -197,7 +217,7 @@ def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
     """Liczy Φ_HL. `dane` muszą być znormalizowane (ozc.dane.normalizuj)."""
     cfg = wczytaj_konfiguracje()
     n = cfg["norma"]
-    d = Dane(dict(dane.wartosci), dict(dane.zrodla), dict(dane.uwagi))
+    d = dane.kopia()
     notatki: list[str] = []
     _domysl_brakujace(d, notatki)
     braki = sprawdz_kompletnosc(d)

@@ -43,10 +43,13 @@ def stropu_drewniany(konstrukcja: str) -> bool:
     return bool(_wiersz("stropy", konstrukcja)["drewniany"])
 
 
-def u_sciany(material: str, grubosc_cm: float, izolacja: str, izolacja_cm: float | None) -> float:
+def u_sciany(material: str, grubosc_cm: float, izolacja: str, izolacja_cm: float | None,
+             material_2: str | None = None, grubosc_2_cm: float | None = None) -> float:
+    """Ściana z jedną lub dwiema warstwami muru (np. cegła + bloczek) i ociepleniem."""
     o = wczytaj_konfiguracje()["opory"]
+    r_druga = r_muru(material_2, grubosc_2_cm or 0) if material_2 else 0.0
     return 1 / (o["Rsi_poziomy"] + o["Rse"] + o["R_tynki"]
-                + r_muru(material, grubosc_cm) + r_izolacji(izolacja, izolacja_cm))
+                + r_muru(material, grubosc_cm) + r_druga + r_izolacji(izolacja, izolacja_cm))
 
 
 def u_sciany_fundamentowej(material: str, grubosc_cm: float, izolacja: str, izolacja_cm: float | None) -> float:

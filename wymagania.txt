@@ -1,4 +1,7 @@
 ﻿anthropic
 streamlit
 openpyxl
+python-docx
+matplotlib
+pypdfium2
 pytest

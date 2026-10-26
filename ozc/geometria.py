@@ -84,7 +84,7 @@ def oblicz_geometrie(d: Dane, cfg: dict) -> Geometria:
     dl, sz = max(dl, sz), min(dl, sz)
 
     if d.get("sciana_grubosc"):
-        t = (d.get("sciana_grubosc") + d.get("sciana_ocieplenie_grubosc", 0)) / 100 + TYNKI_M
+        t = (d.get("sciana_grubosc") + d.get("sciana_grubosc_2", 0) + d.get("sciana_ocieplenie_grubosc", 0)) / 100 + TYNKI_M
     else:
         t = g["grubosc_sciany_domyslna"]
         notatki.append(f"Brak grubości ściany — przyjęto {t:.2f} m do wymiarów wewnętrznych.")

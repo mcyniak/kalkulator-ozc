@@ -1,17 +1,20 @@
-"""Raport wyniku (Markdown) i zapis adresu: dane.xlsx + raport.md + wynik.json (+ oryginał audytu)."""
+"""Zapis adresu: dane.xlsx + raport OZC (Word/PDF) + raport.md + wynik.json (+ oryginał audytu)."""
 from __future__ import annotations
 
 import json
 import re
+import shutil
 import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 from openpyxl.styles import Font
 
-from .dane import Dane
-from .obliczenia import Wynik
+from .dane import Dane, normalizuj, wczytaj_xlsx
+from .obliczenia import Wynik, oblicz
+from .raport_word import utworz_raport
 from .szablon import FONT, zbuduj_skoroszyt
+from .ustawienia import folder_raportow
 
 
 def raport_md(dane: Dane, w: Wynik) -> str:
@@ -76,7 +79,8 @@ def zapisz_adres(katalog: Path, dane: Dane, w: Wynik, oryginaly: list[tuple[str,
         r += 1
     r += 1
     ws.cell(r, 1, "Uwaga: wartości wpisane na sztywno w chwili obliczenia — po zmianie danych policz ponownie w aplikacji.").font = Font(name=FONT, italic=True, color="808080")
-    for tytul, lista in (("Do sprawdzenia", w.ostrzezenia), ("Założenia", w.zalozenia), ("Pytania", list(pytania))):
+    pytania = [getattr(p, "tekst", p) for p in pytania]
+    for tytul, lista in (("Do sprawdzenia", w.ostrzezenia), ("Założenia", w.zalozenia), ("Pytania", pytania)):
         if lista:
             r += 2
             ws.cell(r, 1, tytul).font = Font(name=FONT, bold=True)
@@ -88,7 +92,9 @@ def zapisz_adres(katalog: Path, dane: Dane, w: Wynik, oryginaly: list[tuple[str,
     wb.save(folder / "dane.xlsx")
 
     (folder / "raport.md").write_text(raport_md(dane, w), encoding="utf-8")
+    raporty = _raporty_ozc(dane, w, folder)
     podsumowanie = {
+        **raporty,
         "adres": dane.get("adres") or dane.get("gmina"),
         "nr_protokolu": dane.get("nr_protokolu"),
         "data_audytu": dane.get("data_audytu"),
@@ -105,6 +111,35 @@ def zapisz_adres(katalog: Path, dane: Dane, w: Wynik, oryginaly: list[tuple[str,
     for nazwa, zawartosc in oryginaly:
         (folder / f"oryginal_{_slug(Path(nazwa).stem)}{Path(nazwa).suffix.lower()}").write_bytes(zawartosc)
     return folder
+
+
+def _raporty_ozc(dane: Dane, w: Wynik, folder: Path) -> dict:
+    """Raport Word + PDF w folderze adresu (stare wersje usuwane) i kopia w folderze z Ustawień."""
+    for stary in list(folder.glob("OZC_*.docx")) + list(folder.glob("OZC_*.pdf")):
+        stary.unlink(missing_ok=True)
+    docx, pdf = utworz_raport(dane, w, folder)
+    wynik = {"raport_docx": str(docx), "raport_pdf": str(pdf) if pdf else None, "kopia_raportu": None}
+    cel = folder_raportow()
+    if cel:
+        try:
+            cel.mkdir(parents=True, exist_ok=True)
+            for plik in filter(None, (docx, pdf)):
+                shutil.copy2(plik, cel / plik.name)
+            wynik["kopia_raportu"] = str(cel)
+        except OSError as e:
+            wynik["kopia_raportu_blad"] = f"Nie udało się skopiować raportu do {cel}: {e}"
+    return wynik
+
+
+def raport_dla_folderu(folder: Path) -> dict:
+    """Tworzy raport dla adresu zapisanego wcześniej (z jego dane.xlsx) i aktualizuje wynik.json."""
+    dane, _ = normalizuj(wczytaj_xlsx(folder / "dane.xlsx"))
+    raporty = _raporty_ozc(dane, oblicz(dane), folder)
+    plik = folder / "wynik.json"
+    podsumowanie = json.loads(plik.read_text(encoding="utf-8")) if plik.exists() else {}
+    podsumowanie.update(raporty)
+    plik.write_text(json.dumps(podsumowanie, ensure_ascii=False, indent=2), encoding="utf-8")
+    return podsumowanie
 
 
 def lista_adresow(katalog: Path) -> list[dict]:

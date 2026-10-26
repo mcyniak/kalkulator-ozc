@@ -31,6 +31,13 @@ jobs:
       - name: Budowa .exe
         run: python -m PyInstaller --noconfirm kalkulator_ozc.spec
 
+      - name: Autotest .exe
+        shell: pwsh
+        run: |
+          $wynik = & "dist/Kalkulator OZC/Kalkulator OZC.exe" --autotest 2>&1 | Out-String
+          Write-Output $wynik
+          if ($LASTEXITCODE -ne 0 -or $wynik -notmatch "AUTOTEST OK") { throw "Autotest .exe nie przeszedł" }
+
       - name: Spakowanie
         shell: pwsh
         run: Compress-Archive -Path "dist/Kalkulator OZC" -DestinationPath "Kalkulator-OZC-${{ github.ref_name }}.zip"
