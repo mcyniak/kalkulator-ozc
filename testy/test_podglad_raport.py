@@ -69,6 +69,23 @@ def test_pola_do_uzupelnienia_bez_okien_i_drzwi():
     assert pola_do_uzupelnienia(prosty_budynek()) == []
 
 
+def test_strop_bez_podanej_izolacji_dostaje_jawne_zalozenie():
+    from ozc.obliczenia import zalozenia_kluczowe
+    d = prosty_budynek(dach_rodzaj="Skośny dwuspadowy", strop_U_reczne=None, strop_konstrukcja="Żelbetowy monolityczny",
+                       strop_grubosc=10.0)
+    assert zalozenia_kluczowe(d) == {"strop_izolacja_grubosc": 5.0}
+    w = oblicz(d)
+    assert any("Grubość izolacji" in z and "założenie domyślne" in z for z in w.zalozenia)
+    assert w.U["strop"] < 1.0  # 10 cm żelbetu + 5 cm wełny, nie goły strop
+
+
+def test_ostrzezenie_przy_nieocieplonym_stropie():
+    d = prosty_budynek(dach_rodzaj="Skośny dwuspadowy", strop_U_reczne=None, strop_konstrukcja="Żelbetowy monolityczny",
+                       strop_grubosc=10.0, strop_izolacja="Brak")
+    w = oblicz(d)
+    assert any("bez ocieplenia" in o for o in w.ostrzezenia)
+
+
 def test_pola_do_uzupelnienia_nie_rusza_oryginalu():
     d = Dane({"strefa": "II"})
     pola_do_uzupelnienia(d)

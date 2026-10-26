@@ -41,7 +41,7 @@ def test_prosty_budynek_recznie():
     phi_grunt = 1.45 * fg2 * a * u_eq * 1.0 * dT
 
     V = a * 2.5
-    v = max(0.5 * 2 * V * 7.0 * 0.03 * 1.0, 0.5 * V)
+    v = max(N["wsp_infiltracji_budynek"] * 2 * V * 7.0 * 0.03 * 1.0, N["n_min"] * V)
     phi_v = 0.34 * v * dT
 
     assert w.phi_T == pytest.approx(phi_przegrody + phi_grunt)

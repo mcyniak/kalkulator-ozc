@@ -246,6 +246,10 @@ podloga_izolacja = "Styropian EPS"
 dach_izolacja = "Wełna mineralna"
 woda_gruntowa_plytko = "Nie"
 okna_dachowe = 0
+# [KALIBRACJA] Gdy audyt nie podaje izolacji stropu pod strychem / dachu. W 16 z 60 audytów Ślesina jej brakowało;
+# liczenie takiego stropu jako nieocieplonego dawało 10–15 kW strat przez sufit (zwykle audyt pominął ocieplenie).
+izolacja_stropu_brak = "Wełna mineralna"
+izolacja_stropu_brak_cm = 5.0
 
 
 # -----------------------------------------------------------------------------
@@ -265,7 +269,10 @@ lambda_grunt = 2.0           # [PEWNE] PN-EN ISO 13370: grunt nieznany (glina/i�
 # odczytu z tablic D.x normy 12831 — tablice są z tych wzorów wyprowadzone.   [DO WERYFIKACJI]
 
 # Wentylacja (PN-EN 12831 p. 7.2, załącznik D)
-n_min = 0.5                  # [DO WERYFIKACJI] minimalna krotność wymian [1/h] dla budynku mieszkalnego
+n_min = 0.7                  # [KALIBRACJA] krotność wymian [1/h] dla całego budynku. Programy normowe liczą
+                             # wentylację pomieszczeniami (PN-83/B-03430); 91 obliczeń KAN OZC 7.0 (Szczerców)
+                             # daje medianę 0,71 1/h. Przy 0,7 wyniki na 60 audytach Ślesina: mediana 1,00
+                             # względem dotychczasowych raportów (przy 0,5: 0,90).
 wsp_infiltracji_budynek = 0.5  # [DO WERYFIKACJI] na poziomie budynku infiltracja liczona z połową sumy pomieszczeń
 epsilon_do_10m = 1.0         # [PEWNE] współczynnik wysokości ε dla budynku do 10 m
 epsilon_10_30m = 1.2         # [PEWNE]

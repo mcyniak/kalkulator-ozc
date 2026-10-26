@@ -16,8 +16,8 @@ from openpyxl.styles import Font
 from ozc import __version__, klucz_api, ustawienia
 from ozc.ai_odczyt import MODEL, BladOdczytu, Pytanie, odczytaj_audyt
 from ozc.dane import BladDanych, Dane, Miejsce, normalizuj, opcje_listy, uzupelnij_domyslne, wczytaj_xlsx
-from ozc.konfiguracja import KATALOG_DANYCH
-from ozc.obliczenia import etykieta_z_sekcja, oblicz, pola_do_uzupelnienia
+from ozc.konfiguracja import KATALOG_DANYCH, wczytaj_konfiguracje
+from ozc.obliczenia import etykieta_z_sekcja, oblicz, pola_do_uzupelnienia, zalozenia_kluczowe
 from ozc.podglad import jedna_strona, liczba_stron, wycinek
 from ozc.pola import POLA, POLA_WEJSCIOWE, Pole, Sekcja
 from ozc.raport import lista_adresow, raport_dla_folderu, zapisz_adres
@@ -108,6 +108,7 @@ def do_recznego(a: dict) -> tuple[list[str], list[str]]:
     braki = pola_do_uzupelnienia(a["dane"])
     niepewne = [k for k, zr in a["dane"].zrodla.items()
                 if zr in NIEPEWNE_AI and a["dane"].get(k) is not None and k not in braki and k in POLA_WEJSCIOWE]
+    niepewne += [k for k in zalozenia_kluczowe(a["dane"]) if k not in niepewne and k not in braki]
     return braki, niepewne
 
 
@@ -191,6 +192,7 @@ def stara_wartosc(p: Pole, dane: Dane) -> str:
 def sekcja_do_recznego(a: dict, prefiks: str, braki: list[str], niepewne: list[str]) -> dict[str, str]:
     """Pola, których AI nie odczytało albo odczytało niepewnie — z wycinkiem skanu obok. Zwraca wpisane wartości."""
     wpisane: dict[str, str] = {}
+    kluczowe = zalozenia_kluczowe(a["dane"])
     for tytul, klucze, opis in (
             ("✍ Do uzupełnienia", braki, "Tych danych zabrakło w audycie albo AI ich nie odczytało — wpisz je."),
             ("👁 Do potwierdzenia", niepewne, "AI odczytało te wartości niepewnie — porównaj z wycinkiem i popraw.")):
@@ -206,6 +208,9 @@ def sekcja_do_recznego(a: dict, prefiks: str, braki: list[str], niepewne: list[s
                 wpisane[k] = widget(p, a["dane"], prefiks, lewa, etykieta)
                 if a["dane"].uwagi.get(k):
                     lewa.caption(f"Uwaga AI: {a['dane'].uwagi[k]}")
+                if k in kluczowe:
+                    lewa.caption(f"⚠ Audyt nie podaje izolacji. Puste pole = przyjmę {kluczowe[k]:g} cm wełny mineralnej "
+                                 "(bez ocieplenia ten strop/dach dawałby kilka kW strat więcej).")
                 pokaz_miejsce(a, miejsce_pola(a, k), prawa)
     return wpisane
 
@@ -239,8 +244,15 @@ def formularz(dane: Dane, prefiks: str, pomin: set[str]) -> dict[str, str]:
 def zastosuj(a: dict, wpisane: dict[str, str], potwierdzone: set[str]) -> None:
     """Przenosi wpisy z formularza do danych; pola zmienione lub obejrzane przez człowieka dostają jego źródło."""
     dane = a["dane"].kopia()
+    kluczowe = zalozenia_kluczowe(a["dane"])
     for k, nowa in wpisane.items():
         p = POLA_WEJSCIOWE[k]
+        if not nowa and k in potwierdzone and k in kluczowe:  # potwierdzone założenie domyślne
+            nowa = tekst(kluczowe[k])
+            material = k.removesuffix("_grubosc")
+            if dane.get(material) is None:
+                dane.wartosci[material] = wczytaj_konfiguracje()["zalozenia"]["izolacja_stropu_brak"]
+                dane.zrodla[material] = ZRODLO_CZLOWIEK
         if nowa != stara_wartosc(p, a["dane"]) or k in potwierdzone:
             dane.wartosci[k] = nowa or None
             if nowa:

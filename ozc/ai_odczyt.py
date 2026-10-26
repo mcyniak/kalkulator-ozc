@@ -103,6 +103,10 @@ Zasady:
    `sciana_material_2`/`sciana_grubosc_2`, izolacja → `sciana_ocieplenie`. „Żelbet” w stropie =
    „Żelbetowy monolityczny”. „Unheated ceiling” / „Strop nad nieogrzewanymi pomieszczeniami” = strop pod
    nieogrzewanym strychem (pola `strop_*`). Podsypki z piasku pod podłogą pomiń (to grunt).
+   Gdy strop lub dach ma wypisane warstwy, ale żadnej izolacji, NIE wpisuj „Brak” — pomiń pola izolacji
+   i zadaj pytanie (audyty często pomijają ocieplenie). „Brak” tylko przy wyraźnym zaznaczeniu „Izolacja: Nie”.
+   Warstwę opisaną „—” o grubości ≥ 5 cm w stropie/podłodze potraktuj jako izolację nieznanego rodzaju
+   (`Wełna mineralna` lub `Styropian EPS`), źródło "AI – do sprawdzenia".
 10. Mapowanie pól formularza:
    - „Strop nad ogrzewanymi pomieszczeniami” to strop wewnętrzny — pomiń.
    - „Dach – izolacja … grubość” = `dach_izolacja_grubosc`; materiał tylko gdy podany.

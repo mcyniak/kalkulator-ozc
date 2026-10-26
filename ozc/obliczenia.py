@@ -146,6 +146,20 @@ def sprawdz_kompletnosc(d: Dane) -> list[str]:
     return [etykieta_z_sekcja(k) for k in brakujace_pola(d)]
 
 
+def zalozenia_kluczowe(dane: Dane) -> dict[str, float]:
+    """Założenia, które mocno zmieniają wynik i wymagają potwierdzenia człowieka: {klucz: przyjęta wartość}."""
+    d = dane.kopia()
+    _domysl_brakujace(d, [])
+    poddasze = d.get("poddasze_uzytkowe") == "Tak"
+    dach = d.get("dach_rodzaj", "Skośny dwuspadowy")
+    strop_potrzebny = (poddasze and d.get("strych_nieogrzewany", "Tak") == "Tak") or not poddasze or dach == "Płaski"
+    wynik = {}
+    for k, potrzebny in (("strop_izolacja_grubosc", strop_potrzebny), ("dach_izolacja_grubosc", poddasze and dach != "Płaski")):
+        if potrzebny and dane.get(k) is None and d.zrodla.get(k) == ZRODLO_DOMYSLNE:
+            wynik[k] = d.get(k)
+    return wynik
+
+
 def pola_do_uzupelnienia(dane: Dane) -> list[str]:
     """Pola, które człowiek musi wpisać, zanim da się policzyć — po przyjęciu bezpiecznych założeń."""
     d = dane.kopia()
@@ -170,6 +184,16 @@ def _domysl_brakujace(d: Dane, notatki: list[str]) -> None:
     przyjmij("wentylacja", "Grawitacyjna", "najczęstszy przypadek")
     przyjmij("szczelnosc", "Średni", "wartość środkowa")
     przyjmij("oslonienie", "Średnie", "wartość środkowa")
+
+    # Strop / dach bez podanej izolacji: audyty często pomijają ocieplenie — założenie jawne, do potwierdzenia.
+    zal = wczytaj_konfiguracje()["zalozenia"]
+    for izol, grub, u_reczne in (("strop_izolacja", "strop_izolacja_grubosc", "strop_U_reczne"),
+                                 ("dach_izolacja", "dach_izolacja_grubosc", "dach_U_reczne")):
+        izolacja_podana = d.get(izol) is not None and d.zrodla.get(izol) != ZRODLO_DOMYSLNE
+        if d.get(u_reczne) is None and d.get(grub) is None and not izolacja_podana:
+            d.wartosci.pop(izol, None)
+            przyjmij(izol, zal["izolacja_stropu_brak"], "audyt nie podaje izolacji")
+            przyjmij(grub, zal["izolacja_stropu_brak_cm"], "audyt nie podaje izolacji")
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +391,10 @@ def oblicz(dane: Dane, blokada_h: float | None = None) -> Wynik:
         if abs(roznica) > cfg["geometria"]["rozbieznosc_powierzchni"]:
             ostrzezenia.append(f"Powierzchnia ogrzewana z obrysu ≈ {geo.pow_ogrzewana:.0f} m² różni się od deklarowanej "
                                f"{dekl:g} m² o {roznica:+.0%} — sprawdź wymiary obrysu i kondygnacje.")
+    for e in elementy:
+        if e.grupa in ("Strop pod strychem", "Dach skośny", "Stropodach") and e.U > 1.0:
+            ostrzezenia.append(f"{e.grupa} bez ocieplenia (U = {e.U:.2f}) daje {e.phi / 1000:.1f} kW strat — "
+                               "sprawdź, czy audyt nie pominął izolacji.")
     if d.get("garaz", "Nie") != "Nie":
         ostrzezenia.append("Garaż w bryle budynku nie jest jeszcze uwzględniany osobno — policzono go jak część ogrzewaną "
                            "(wynik lekko zawyżony).")
