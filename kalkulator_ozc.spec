@@ -19,5 +19,6 @@ datas += copy_metadata("streamlit") + collect_data_files("docx")  # domyślny sz
 
 a = Analysis(["start.py"], pathex=["."], datas=datas, binaries=binaries, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Kalkulator OZC", console=True)
+# Bez okna konsoli: jego przypadkowe zamknięcie wyłączało program („Connection error” w przeglądarce).
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Kalkulator OZC", console=False)
 coll = COLLECT(exe, a.binaries, a.datas, name="Kalkulator OZC")

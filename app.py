@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -460,4 +461,8 @@ strony = {"Audyty": strona_audyty, "Lista adresów": strona_lista, "Ustawienia":
 wybrana = st.sidebar.radio("Menu", list(strony))
 if not klucz_api.aktywny_klucz():
     st.sidebar.warning("Brak klucza API — wpisz go w „Ustawieniach”.")
+st.sidebar.divider()
+if st.sidebar.button("⏻ Zamknij program"):
+    st.sidebar.info("Program zamknięty — możesz zamknąć tę kartę przeglądarki.")
+    threading.Timer(1.0, os._exit, [0]).start()
 strony[wybrana]()

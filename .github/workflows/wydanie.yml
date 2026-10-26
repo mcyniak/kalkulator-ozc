@@ -34,9 +34,11 @@ jobs:
       - name: Autotest .exe
         shell: pwsh
         run: |
-          $wynik = & "dist/Kalkulator OZC/Kalkulator OZC.exe" --autotest 2>&1 | Out-String
-          Write-Output $wynik
-          if ($LASTEXITCODE -ne 0 -or $wynik -notmatch "AUTOTEST OK") { throw "Autotest .exe nie przeszedł" }
+          # .exe nie ma konsoli — wynik w kodzie wyjścia, komunikaty w %LOCALAPPDATA%\Kalkulator OZC\log.txt
+          $p = Start-Process -FilePath "dist/Kalkulator OZC/Kalkulator OZC.exe" -ArgumentList "--autotest" -Wait -PassThru
+          $log = Join-Path $env:LOCALAPPDATA "Kalkulator OZC/log.txt"
+          if (Test-Path $log) { Get-Content $log -Tail 40 }
+          if ($p.ExitCode -ne 0) { throw "Autotest .exe nie przeszedł (kod $($p.ExitCode))" }
 
       - name: Spakowanie
         shell: pwsh
