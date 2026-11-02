@@ -8,7 +8,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -473,12 +472,12 @@ def strona_audyty() -> None:
     m[3].metric("Nieodczytane", bledy, border=True)
     if pozostale == 0 and zapisane:
         st.success("Wszystkie odczytane audyty są zapisane — raporty są w zakładce „Lista adresów”.")
-    tabela = pd.DataFrame([{
+    tabela = [{
         "Adres": nazwa_audytu(a),
         "OZC [kW]": liczba_pl(a["wynik"].phi_HL_kW) if a["wynik"] else "—",
         "Status": status(a),
         "Plik": a["nazwa"],
-    } for a in audyty])
+    } for a in audyty]
     st.dataframe(tabela, hide_index=True, width="stretch")
 
     gotowe = [a for a in audyty if status(a) == "✔ gotowe"]

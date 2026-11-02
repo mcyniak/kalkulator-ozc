@@ -10,13 +10,17 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import anthropic
+from typing import TYPE_CHECKING
+
 import pypdfium2 as pdfium
 
 from .dane import Dane, Miejsce, normalizuj_wartosc, opcje_listy, uzupelnij_domyslne
 from .pdf import BLOKADA_PDF
 from .podglad import miniatury
 from .pola import POLA, POLA_WEJSCIOWE, Sekcja
+
+if TYPE_CHECKING:
+    import anthropic
 
 MODEL = "claude-haiku-5-5"          # domyślny odczyt: ok. 0,01 USD za audyt (krótki namysł)
 MODEL_DOKLADNY = "claude-opus-5-5"  # na żądanie, dla trudnych skanów: ok. 0,25 USD za audyt
@@ -219,6 +223,7 @@ def zapytaj_claude(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic |
                    dokladny: bool = False) -> dict:
     """Wysyła pliki audytu do Claude i zwraca surowy słownik zgodny ze SCHEMAT.
     dokladny=False: tani model z krótkim namysłem; True: najmocniejszy model (kilkadziesiąt razy droższy)."""
+    import anthropic  # ciężka biblioteka — ładowana dopiero przy odczycie (szybszy start programu)
     client = client or anthropic.Anthropic()
     tresc = [_blok_pliku(n, z) for n, z in pliki]
     nazwy = ", ".join(Path(n).stem for n, _ in pliki)
@@ -376,7 +381,9 @@ def przetworz_odpowiedz(surowa: dict, mapa_stron: list[int] | None = None) -> Wy
 
 def odczytaj_audyt(pliki: list[tuple[str, bytes]], client: anthropic.Anthropic | None = None,
                    dokladny: bool = False) -> WynikOdczytu:
-    client = client or anthropic.Anthropic()
+    if client is None:
+        import anthropic
+        client = anthropic.Anthropic()
     wybrane = wybierz_strony(pliki, client)
     wynik = przetworz_odpowiedz(
         zapytaj_claude(przytnij(pliki, wybrane) if wybrane else pliki, client, dokladny), wybrane)

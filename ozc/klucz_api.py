@@ -8,8 +8,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import anthropic
-
 ZMIENNA = "ANTHROPIC_API_KEY"
 PLIK_KLUCZA = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Kalkulator OZC" / "klucz_api.txt"
 
@@ -51,6 +49,7 @@ def zamaskowany(klucz: str) -> str:
 
 def sprawdz(klucz: str, model: str) -> str | None:
     """Sprawdza klucz bezpłatnym zapytaniem o model. Zwraca komunikat błędu albo None, gdy działa."""
+    import anthropic  # ciężka biblioteka — tylko przy sprawdzaniu klucza
     try:
         anthropic.Anthropic(api_key=klucz.strip(), max_retries=0, timeout=20).models.retrieve(model)
     except anthropic.AuthenticationError:

@@ -12,7 +12,6 @@ from openpyxl.styles import Font
 
 from .dane import Dane, normalizuj, wczytaj_xlsx
 from .obliczenia import Wynik, oblicz
-from .raport_word import utworz_raport
 from .szablon import FONT, zbuduj_skoroszyt
 from .ustawienia import folder_raportow
 
@@ -108,6 +107,7 @@ def _raporty_ozc(dane: Dane, w: Wynik, folder: Path) -> dict:
     """Raport Word + PDF w folderze adresu (stare wersje usuwane) i kopia w folderze z Ustawień."""
     for stary in list(folder.glob("OZC_*.docx")) + list(folder.glob("OZC_*.pdf")):
         stary.unlink(missing_ok=True)
+    from .raport_word import utworz_raport  # matplotlib i python-docx — dopiero przy tworzeniu raportu
     docx, pdf = utworz_raport(dane, w, folder)
     wynik = {"raport_docx": str(docx), "raport_pdf": str(pdf) if pdf else None, "kopia_raportu": None}
     cel = folder_raportow()

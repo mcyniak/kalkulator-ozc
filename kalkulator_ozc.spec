@@ -20,6 +20,10 @@ datas += copy_metadata("streamlit") + collect_data_files("docx")  # domyślny sz
 
 a = Analysis(["start.py"], pathex=["."], datas=datas, binaries=binaries, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
+# Okienko startowe pokazuje się od razu po kliknięciu; start.py zamyka je po otwarciu przeglądarki.
+splash = Splash("assets/splash.png", binaries=a.binaries, datas=a.datas,
+                text_pos=(20, 222), text_size=10, text_color="#5B6470", text_default="Uruchamiam program…",
+                always_on_top=False)
 # Bez okna konsoli: jego przypadkowe zamknięcie wyłączało program („Connection error” w przeglądarce).
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Kalkulator OZC", console=False)
-coll = COLLECT(exe, a.binaries, a.datas, name="Kalkulator OZC")
+exe = EXE(pyz, a.scripts, splash, [], exclude_binaries=True, name="Kalkulator OZC", console=False)
+coll = COLLECT(exe, a.binaries, a.datas, splash.binaries, name="Kalkulator OZC")
